@@ -9,7 +9,9 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 // `packages/**`, so this runs as `eslint .` from the package directory and
 // reuses the repo-installed plugins.
 export default defineConfig([
-  globalIgnores(['dist']),
+  // `dist` is generated; `consumer-check/app` is a throwaway consumer app built
+  // against the packed tarballs by consumer-check/run.mjs, not library source.
+  globalIgnores(['dist', 'consumer-check/app/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

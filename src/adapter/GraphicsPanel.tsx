@@ -10,7 +10,8 @@ import { useCallback, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import type { IDEPanelServices } from 'web-ide'
 import { DEFAULT_CANVAS, type SceneSnapshot } from '../model/scene'
-import { SvgCanvas } from '../renderer/SvgCanvas'
+import { SvgCanvas, type MeasureFn } from '../renderer/SvgCanvas'
+import type { GraphicsInput } from '../service/events'
 import type { GraphicsController } from './controller'
 import { controllerRegistry } from './registry'
 
@@ -56,6 +57,10 @@ export function GraphicsPanel({ runtime }: IDEPanelServices) {
     useCallback(() => controller?.connected.value ?? false, [controller]),
   )
 
+  // Stable callbacks so SvgCanvas does not rebind its measurer every frame.
+  const onInput = useCallback((event: GraphicsInput) => controller?.submitInput(event), [controller])
+  const bindMeasure = useCallback((measure: MeasureFn | null) => controller?.setMeasurer(measure), [controller])
+
   if (!controller) {
     const supported = typeof runtime.registerHostDevice === 'function'
     return (
@@ -72,11 +77,7 @@ export function GraphicsPanel({ runtime }: IDEPanelServices) {
   const showHint = !connected && snapshot.objects.length === 0
   return (
     <div style={wrapperStyle}>
-      <SvgCanvas
-        snapshot={snapshot}
-        onInput={(event) => controller.submitInput(event)}
-        bindMeasure={(measure) => controller.setMeasurer(measure)}
-      />
+      <SvgCanvas snapshot={snapshot} onInput={onInput} bindMeasure={bindMeasure} />
       {showHint && (
         <div style={hintStyle}>
           Run a Python program that uses the <code>&nbsp;graphics&nbsp;</code> library

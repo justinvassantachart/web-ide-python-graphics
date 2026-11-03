@@ -106,6 +106,14 @@ describe('GraphicsService', () => {
     expect(h.sent.at(-1)).toMatchObject({ id: 1, ok: true, result: { event: { kind: 'mouseclick', x: 3, y: 4 } } })
   })
 
+  it('does not wedge the request gate when wait_event timeout_ms is malformed', () => {
+    h.sendRaw('{"op":"wait_event","id":1,"timeout_ms":"abc"}')
+    expect(h.sent.at(-1)).toMatchObject({ id: 1, ok: false, error: { code: 'bad_request' } })
+    // The gate must be free: a subsequent request still succeeds.
+    h.send({ op: 'metrics', id: 2 })
+    expect(h.sent.at(-1)).toMatchObject({ id: 2, ok: true })
+  })
+
   it('times out a parked wait_event with a null event', () => {
     h.send({ op: 'wait_event', id: 1, timeout_ms: 100 })
     h.timers.fireAll()

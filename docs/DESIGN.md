@@ -49,8 +49,10 @@ deadlock-free and close the trust-boundary holes found in review.
 8. **Reactive controller bridge + lifecycle.** The `activate`→panel bridge is a
    subscribable per-session registry (not a bare `WeakMap` read), so the panel updates
    when the controller appears/disappears and survives React StrictMode's throwaway
-   session. The host-device registration and the controller are both disposed through
-   `context.register`; the registry entry is deleted only when it still identities to
+   session. The host-device registration and the controller are both disposed when
+   the plugin deactivates (the plugin returns a cleanup function; `context.register`
+   is the equivalent mechanism); the registry entry is deleted only when it still
+   identities to
    this activation's controller. End-of-run is driven by the device **`signal` abort**
    (the per-run authority), not the `exit` event.
 
@@ -205,7 +207,8 @@ text origin; `center` common for labels).
 ### 3.4 Errors (codes)
 
 `bad_request` (malformed/validation), `unknown_object`, `duplicate_object`,
-`too_many_objects`, `limit_exceeded`, `unsupported` (e.g. images in v1), `internal`.
+`too_many_objects`, `limit_exceeded`, `unsupported` (reserved for a future
+image/asset API; no op emits it in v1), `internal`.
 Per-channel errors are **recoverable** (channel-local; the other services and the
 device survive). Only transport framing corruption (§2.1) tears down the connection.
 
@@ -247,8 +250,8 @@ oversized text/points, and unknown object ids are rejected (`bad_request` /
   editor/explorer/persisted projection. The turtle adapter is turtle-*style*,
   explicitly not stdlib `turtle`.
 - **Registration** happens in `plugin.activate(context)` while idle:
-  `context.runtime.registerHostDevice(openerForMultiplexer)`, disposed via
-  `context.register`. A per-session `WeakMap<RuntimeSession, GraphicsController>`
+  `context.runtime.registerHostDevice(openerForMultiplexer)`, disposed on plugin
+  deactivation via the returned cleanup. A per-session `WeakMap<RuntimeSession, GraphicsController>`
   bridges the controller to the **panel** (which only receives `IDEPanelServices`),
   giving per-instance isolation (one session per mount).
 - **Panel** (`IDEPanelContribution`, id `web-ide.python-graphics`, title

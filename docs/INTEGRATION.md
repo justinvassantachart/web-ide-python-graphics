@@ -100,15 +100,40 @@ Error codes: `bad_request`, `unknown_object`, `duplicate_object`,
 Text length is measured in UTF-16 code units (the Python client counts the same
 so astral characters cannot slip past it).
 
-**Images are unsupported in v1** (reserved error `unsupported`). There is no URL
-fetch and no image decode: this avoids uncontrolled URLs and unbounded decoding.
-The planned follow-up is a bounded, host-approved asset registry addressed by an
-opaque id (never a guest-controlled URL), with a hard pixel-dimension cap.
+**Images: no API in v1.** There is deliberately no image op — the protocol and
+the Python `Canvas` cannot express one — so there is no URL fetch and no image
+decode, which is why uncontrolled URLs and unbounded decoding are not a concern.
+The `unsupported` error code is **reserved** for the planned follow-up: a
+bounded, host-approved asset registry addressed by an opaque id (never a
+guest-controlled URL), with a hard pixel-dimension cap.
+
+### Object identity, batching, and the final image
+
+- **Object id lifetime.** Ids are opaque strings (≤128 chars) allocated by the
+  guest. The Python client allocates monotonically (`g1`, `g2`, …) and never
+  reuses an id within a run, including after `delete`. The host rejects a
+  duplicate `add` (`duplicate_object`) and a mutation of an unknown id, and ids
+  do not survive a run: a new run resets the scene, so the id space restarts.
+- **Batch atomicity.** v1 has **no multi-command transaction**. Commands apply
+  individually in arrival order; there is no all-or-nothing batch and no partial
+  rollback. What is guaranteed is ordering: when the guest yields (any request —
+  `pause`/`wait_event`/`poll_event`/`bounds`/`metrics` — or program exit), every
+  command it sent beforehand has been applied to the scene. The renderer coalesces
+  repaints (one per microtask), so between yields intermediate states may or may
+  not paint; use `pause` to pace animation deterministically. A future explicit
+  `begin`/`commit` batch op is possible behind the version handshake but is not in
+  v1.
+- **Final image.** When a run ends (program exit or Stop → device `signal`
+  abort), the last applied scene remains displayed (frozen) until the next run's
+  first `canvas`/`add`, which resets it.
 
 ## 3. Test vectors
 
-Exact bytes (hex) produced by `encodeFrame(channel, encodeJson(message))`. A
-conforming implementation MUST parse these and produce these.
+Bytes (hex) produced by `encodeFrame(channel, encodeJson(message))`. A conforming
+implementation MUST **parse** these frames. JSON object-key order is **not**
+normative, so an implementation's own output may differ byte-for-byte (the
+Python client appends `op`/`id` last, for example); both sides key by name. The
+8-byte header and the payload's decoded JSON are the authoritative part.
 
 ```
 control hello      ch0  {"t":"hello","mux":1}
@@ -120,8 +145,8 @@ control welcome    ch0  {"t":"welcome","mux":1,"services":[{"channel":1,"capabil
 graphics init req  ch1  {"op":"init","id":1,"client":"python-graphics","version":1}
   c70100010000003b7b226f70223a22696e6974222c226964223a312c22636c69656e74223a22707974686f6e2d6772617068696373222c2276657273696f6e223a317d
 
-graphics init resp ch1  {"id":1,"ok":true,"result":{"service":"graphics","version":1}}
-  c70100010000003e7b226964223a312c226f6b223a747275652c22726573756c74223a7b2273657276696365223a226772617068696373222c2276657273696f6e223a317d7d
+graphics init resp ch1  {"id":1,"ok":true,"result":{"service":"graphics","version":1,"limits":{"maxObjects":10000,"maxPoints":10000,"maxTextLen":4096,"maxCanvasDim":4096,"maxPauseMs":60000}}}
+  c7010001000000a77b226964223a312c226f6b223a747275652c22726573756c74223a7b2273657276696365223a226772617068696373222c2276657273696f6e223a312c226c696d697473223a7b226d61784f626a65637473223a31303030302c226d6178506f696e7473223a31303030302c226d6178546578744c656e223a343039362c226d617843616e76617344696d223a343039362c226d617850617573654d73223a36303030307d7d7d
 
 add rect cmd       ch1  {"op":"add","id":"g1","shape":"rect","x":10,"y":10,"w":80,"h":40,"fill":"skyblue","outline":"navy","width":2}
   c70100010000006d7b226f70223a22616464222c226964223a226731222c227368617065223a2272656374...
@@ -150,6 +175,13 @@ A host composing a second service over the one device agrees:
   no unsolicited host→guest writes.
 - All writes across channels are serialized by the multiplexer; a transport
   framing error (invariant §0.3) tears down the shared device for that run.
+
+The multiplexer frames and routes **opaque** payloads; it does not parse a
+second service's messages and so cannot enforce that service's response-only /
+single-outstanding discipline. The outbound backlog cap (64 queued frames) is
+the backstop that bounds the damage a misbehaving service can do to the shared
+blocking stream; honoring §0.1 is the injected service's responsibility under
+this contract.
 
 Composition entry points:
 `createPythonGraphicsPlugin({ createAdditionalServices })` for the Web IDE

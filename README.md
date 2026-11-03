@@ -103,12 +103,12 @@ no `url()`, CSS functions, or custom properties. Text renders as SVG text
 content, never HTML. All guest input is bounded and re-validated on the host
 (finite numbers, object/point/text/canvas limits, no prototype pollution).
 Keyboard capture is scoped to the focused canvas; there is no document-wide
-capture or mutable global canvas. Images are intentionally unsupported in v1.
+capture or mutable global canvas. There is no image API in v1.
 
 ## Limitations / deferred
 
-- **Images**: unsupported in v1 (`unsupported` error); a bounded host-approved
-  asset registry is the planned follow-up.
+- **Images**: no image API in v1 (the `unsupported` code is reserved for it); a
+  bounded host-approved asset registry is the planned follow-up.
 - **turtle stdlib parity**: not claimed; only a turtle-style adapter.
 - **Renderer**: SVG only; a Canvas 2D backend (for very high object counts) is a
   possible future addition behind the existing renderer seam.

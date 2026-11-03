@@ -202,10 +202,14 @@ export class GraphicsService implements HostService {
             this.respond(id, true, { event: queued })
             return
           }
+          // Validate BEFORE parking: a throw here must not leave the
+          // single-outstanding gate occupied for the rest of the run.
+          const timeout = message.timeout_ms === undefined
+            ? undefined
+            : clamp(finiteNumber(message.timeout_ms, 'timeout_ms'), 0, LIMITS.MAX_PAUSE_MS)
           const parked: Parked = { kind: 'event', id, timer: null }
           this.parked = parked
-          if (message.timeout_ms !== undefined) {
-            const timeout = clamp(finiteNumber(message.timeout_ms, 'timeout_ms'), 0, LIMITS.MAX_PAUSE_MS)
+          if (timeout !== undefined) {
             parked.timer = this.scheduler.setTimeout(() => {
               if (this.parked === parked) this.parked = null
               this.respond(id, true, { event: null })
