@@ -44,23 +44,16 @@ function useController(session: object): GraphicsController | undefined {
   )
 }
 
-function useObservable<T>(subscribe: ((cb: () => void) => () => void) | null, read: () => T): T {
-  return useSyncExternalStore(
-    useCallback((cb) => (subscribe ? subscribe(cb) : () => {}), [subscribe]),
-    read,
-  )
-}
-
 export function GraphicsPanel({ runtime }: IDEPanelServices) {
   const controller = useController(runtime)
 
-  const snapshot = useObservable(
-    controller ? (cb) => controller.snapshot.subscribe(() => cb()) : null,
-    () => controller?.snapshot.value ?? EMPTY_SNAPSHOT,
+  const snapshot = useSyncExternalStore(
+    useCallback((cb) => (controller ? controller.snapshot.subscribe(() => cb()) : () => {}), [controller]),
+    useCallback(() => controller?.snapshot.value ?? EMPTY_SNAPSHOT, [controller]),
   )
-  const connected = useObservable(
-    controller ? (cb) => controller.connected.subscribe(() => cb()) : null,
-    () => controller?.connected.value ?? false,
+  const connected = useSyncExternalStore(
+    useCallback((cb) => (controller ? controller.connected.subscribe(() => cb()) : () => {}), [controller]),
+    useCallback(() => controller?.connected.value ?? false, [controller]),
   )
 
   if (!controller) {

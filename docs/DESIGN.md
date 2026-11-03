@@ -237,17 +237,23 @@ oversized text/points, and unknown object ids are rejected (`bad_request` /
 
 ## 5. Web IDE integration (adapter)
 
-- **Python helper** `graphics.py` ships as an **execution-only** resource at
-  `/graphics.py` (lands at guest `/graphics.py`, importable as `import graphics` from
-  `/main.py`; confirmed by the `/sysroot` flatten + `sys.path` containing `/`). It is
-  absent from the editor/explorer/persisted projection. Optional `pengfx_turtle.py`
-  (a small turtle-*style* adapter, explicitly not stdlib `turtle`).
+- **Python helper** ships as an **execution-only** resource *package directory*
+  at guest `/graphics/__init__.py` (+ `/graphics/turtle.py`), importable as
+  `import graphics` / `from graphics.turtle import Turtle` from `/main.py`
+  (confirmed by the `/sysroot` flatten + `sys.path` containing `/`). A package
+  directory — not a top-level `/graphics.py` — is required: `/graphics.py` would
+  flatten to the same engine path as a student's `/workspace/graphics.py` and
+  throw a hard collision that blocks every run (see §0.6). It is absent from the
+  editor/explorer/persisted projection. The turtle adapter is turtle-*style*,
+  explicitly not stdlib `turtle`.
 - **Registration** happens in `plugin.activate(context)` while idle:
   `context.runtime.registerHostDevice(openerForMultiplexer)`, disposed via
   `context.register`. A per-session `WeakMap<RuntimeSession, GraphicsController>`
   bridges the controller to the **panel** (which only receives `IDEPanelServices`),
   giving per-instance isolation (one session per mount).
-- **Panel** (`IDEPanelContribution`, title "Canvas") renders the SVG from the
+- **Panel** (`IDEPanelContribution`, id `web-ide.python-graphics`, title
+  "Graphics" — not the built-in `canvasPlugin`'s id `canvas`/title "Canvas")
+  renders the SVG from the
   controller's scene, forwards scoped pointer/keyboard input, and shows a placeholder
   when no graphics device is connected (e.g. non-graphics runtime, or before first
   run). Keyboard is captured **only when the canvas is focused** (tabindex), never
@@ -257,10 +263,10 @@ oversized text/points, and unknown object ids are rejected (`bad_request` /
   disconnected. New run → new device → reset.
 - **Composition**:
   - `pythonGraphicsPlugin` — default, graphics only.
-  - `createPythonGraphicsPlugin({ additionalServices })` — graphics on ch.1 +
-    host services on ch.2…; or
-  - `createDeviceMultiplexerOpener(services)` + `GraphicsService` for a host that
-    wants to own `registerHostDevice` itself.
+  - `createPythonGraphicsPlugin({ createAdditionalServices })` — graphics on
+    ch.1 + host services on ch.2…; or
+  - `new DeviceMultiplexer({ services: [graphicsService, …] }).opener` +
+    `GraphicsService` for a host that wants to own `registerHostDevice` itself.
 - Web IDE remains fully usable without the companion (purely additive, separate pkg).
 
 ## 6. Versioned handoff contract (consumer agreement)

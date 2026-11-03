@@ -32,14 +32,6 @@ export interface KeyInput {
 
 export type GraphicsInput = PointerInput | KeyInput
 
-const POINTER_KINDS = new Set<PointerEventKind>([
-  'mousedown', 'mouseup', 'mouseclick', 'mousemove', 'mousedrag',
-])
-
-export function isPointerInput(event: GraphicsInput): event is PointerInput {
-  return POINTER_KINDS.has(event.kind as PointerEventKind)
-}
-
 /** Consecutive move/drag events coalesce (only the latest matters). */
 export function isCoalescible(event: GraphicsInput): boolean {
   return event.kind === 'mousemove' || event.kind === 'mousedrag'

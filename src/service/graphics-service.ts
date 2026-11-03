@@ -60,9 +60,11 @@ export interface GraphicsServiceOptions {
 
 const REQUEST_OPS = new Set(['init', 'metrics', 'bounds', 'pause', 'wait_event', 'poll_event'])
 
-type Parked =
-  | { kind: 'event'; id: number; timer: TimerHandle | null }
-  | { kind: 'pause'; id: number; timer: TimerHandle }
+interface Parked {
+  kind: 'event' | 'pause'
+  id: number
+  timer: TimerHandle | null
+}
 
 export class GraphicsService implements HostService {
   readonly channel: number
@@ -184,11 +186,14 @@ export class GraphicsService implements HostService {
         }
         case 'pause': {
           const ms = clamp(finiteNumber(message.ms, 'ms'), 0, LIMITS.MAX_PAUSE_MS)
-          const timer = this.scheduler.setTimeout(() => {
-            this.parked = null
+          // Assign `parked` before scheduling so a synchronous scheduler cannot
+          // fire the callback before the slot is set and wedge the gate.
+          const parked: Parked = { kind: 'pause', id, timer: null }
+          this.parked = parked
+          parked.timer = this.scheduler.setTimeout(() => {
+            if (this.parked === parked) this.parked = null
             this.respond(id, true, {})
           }, ms)
-          this.parked = { kind: 'pause', id, timer }
           return
         }
         case 'wait_event': {
@@ -197,15 +202,15 @@ export class GraphicsService implements HostService {
             this.respond(id, true, { event: queued })
             return
           }
-          let timer: TimerHandle | null = null
+          const parked: Parked = { kind: 'event', id, timer: null }
+          this.parked = parked
           if (message.timeout_ms !== undefined) {
             const timeout = clamp(finiteNumber(message.timeout_ms, 'timeout_ms'), 0, LIMITS.MAX_PAUSE_MS)
-            timer = this.scheduler.setTimeout(() => {
-              this.parked = null
+            parked.timer = this.scheduler.setTimeout(() => {
+              if (this.parked === parked) this.parked = null
               this.respond(id, true, { event: null })
             }, timeout)
           }
-          this.parked = { kind: 'event', id, timer }
           return
         }
         case 'poll_event':

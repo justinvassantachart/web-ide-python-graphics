@@ -139,6 +139,28 @@ def _num(value, field):
     return value
 
 
+def _nonneg(value, field):
+    """Mirrors the host's non-negative check (e.g. stroke width)."""
+    n = _num(value, field)
+    if n < 0:
+        raise GraphicsError("%s must be >= 0" % field)
+    return n
+
+
+def _positive(value, field):
+    """Mirrors the host's strictly-positive check (e.g. font size)."""
+    n = _num(value, field)
+    if n <= 0:
+        raise GraphicsError("%s must be > 0" % field)
+    return n
+
+
+def _text_len(text):
+    # Count UTF-16 code units, matching the host's JS string-length limit
+    # exactly, so a client-accepted string is never dropped by the host.
+    return len(text.encode("utf-16-le")) // 2
+
+
 def _points(value, field):
     pts = list(value)
     if len(pts) > _MAX_POINTS:
@@ -294,7 +316,7 @@ class GraphicsObject:
         return self._update(fill=_color(color, "color"))
 
     def set_width(self, width):
-        return self._update(width=_num(width, "width"))
+        return self._update(width=_nonneg(width, "width"))
 
     def set_opacity(self, opacity):
         return self._update(opacity=_num(opacity, "opacity"))
@@ -302,12 +324,12 @@ class GraphicsObject:
     def set_text(self, text):
         if not isinstance(text, str):
             raise GraphicsError("text must be a string")
-        if len(text) > _MAX_TEXT_LEN:
+        if _text_len(text) > _MAX_TEXT_LEN:
             raise GraphicsError("text exceeds %d characters" % _MAX_TEXT_LEN)
         return self._update(text=text)
 
     def set_font_size(self, size):
-        return self._update(font_size=_num(size, "font_size"))
+        return self._update(font_size=_positive(size, "font_size"))
 
     def _update(self, **props):
         self._check()
@@ -345,7 +367,7 @@ class GraphicsObject:
     def get_bounds(self):
         """Returns the object's measured bounds as a dict {x, y, w, h}."""
         self._check()
-        return self._canvas._conn.request("bounds", target=self.id)
+        return self._canvas._bounds(self.id)
 
     def delete(self):
         if self._deleted:
@@ -381,27 +403,27 @@ class Canvas:
     def create_line(self, x1, y1, x2, y2, color="black", width=1):
         return self._add(
             "line", x1=_num(x1, "x1"), y1=_num(y1, "y1"), x2=_num(x2, "x2"), y2=_num(y2, "y2"),
-            outline=_color(color, "color"), width=_num(width, "width"),
+            outline=_color(color, "color"), width=_nonneg(width, "width"),
         )
 
     def create_polyline(self, points, color="black", width=1, fill=None):
         return self._add(
             "polyline", points=_points(points, "points"),
-            outline=_color(color, "color"), width=_num(width, "width"), fill=_color(fill, "fill"),
+            outline=_color(color, "color"), width=_nonneg(width, "width"), fill=_color(fill, "fill"),
         )
 
     def create_rectangle(self, x1, y1, x2, y2, fill=None, outline="black", width=1):
         x, y, w, h = _corners_to_box(x1, y1, x2, y2)
         return self._add(
             "rect", x=x, y=y, w=w, h=h,
-            fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_num(width, "width"),
+            fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_nonneg(width, "width"),
         )
 
     def create_oval(self, x1, y1, x2, y2, fill=None, outline="black", width=1):
         x, y, w, h = _corners_to_box(x1, y1, x2, y2)
         return self._add(
             "oval", x=x, y=y, w=w, h=h,
-            fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_num(width, "width"),
+            fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_nonneg(width, "width"),
         )
 
     def create_circle(self, cx, cy, radius, fill=None, outline="black", width=1):
@@ -411,13 +433,13 @@ class Canvas:
     def create_polygon(self, points, fill=None, outline="black", width=1):
         return self._add(
             "polygon", points=_points(points, "points"),
-            fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_num(width, "width"),
+            fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_nonneg(width, "width"),
         )
 
     def create_text(self, x, y, text, color="black", font_size=16, anchor="nw", font_family="sans-serif"):
         if not isinstance(text, str):
             raise GraphicsError("text must be a string")
-        if len(text) > _MAX_TEXT_LEN:
+        if _text_len(text) > _MAX_TEXT_LEN:
             raise GraphicsError("text exceeds %d characters" % _MAX_TEXT_LEN)
         if anchor not in _ANCHORS:
             raise GraphicsError("anchor must be one of %s" % ", ".join(sorted(_ANCHORS)))
@@ -425,7 +447,7 @@ class Canvas:
             raise GraphicsError("font_family must be one of %s" % ", ".join(sorted(_FONT_FAMILIES)))
         return self._add(
             "text", x=_num(x, "x"), y=_num(y, "y"), text=text,
-            fill=_color(color, "color"), font_size=_num(font_size, "font_size"),
+            fill=_color(color, "color"), font_size=_positive(font_size, "font_size"),
             anchor=anchor, font_family=font_family,
         )
 
@@ -462,11 +484,23 @@ class Canvas:
             raise GraphicsError("unknown object %r" % id, code="unknown_object")
         self._conn.command(op, id=id, **fields)
 
+    def _bounds(self, object_id):
+        self._ensure_open()
+        if object_id not in self._live:
+            raise GraphicsError("unknown object %r" % object_id, code="unknown_object")
+        try:
+            return self._conn.request("bounds", target=object_id)
+        except GraphicsClosed:
+            self._closed = True
+            raise
+
     # ---- input / timing ---------------------------------------------------
 
     def get_event(self, timeout=None):
         """Blocks for the next input event, or returns None on timeout/close."""
         self._ensure_open()
+        if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float))):
+            raise GraphicsError("timeout must be a number of seconds or None")
         try:
             kwargs = {} if timeout is None else {"timeout_ms": int(min(max(timeout, 0), _MAX_PAUSE_MS / 1000) * 1000)}
             result = self._conn.request("wait_event", **kwargs)
@@ -536,5 +570,7 @@ def _as_object(canvas, obj):
     if isinstance(obj, GraphicsObject):
         return obj
     if isinstance(obj, str):
+        if not 1 <= len(obj) <= 128:
+            raise GraphicsError("object id must be 1..128 characters")
         return GraphicsObject(canvas, obj)
     raise GraphicsError("expected a graphics object or id")

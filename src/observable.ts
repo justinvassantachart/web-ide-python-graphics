@@ -20,11 +20,6 @@ export class Observable<T> {
     this.emit()
   }
 
-  /** Re-emits the current value (e.g. after an in-place mutation). */
-  notify(): void {
-    this.emit()
-  }
-
   subscribe(listener: (value: T) => void): () => void {
     this.listeners.add(listener)
     return () => {

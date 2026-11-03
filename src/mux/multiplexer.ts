@@ -22,6 +22,14 @@ export interface DeviceMultiplexerOptions {
   readonly services: readonly HostService[]
 }
 
+/**
+ * Upper bound on outbound frames queued but not yet written. Under the
+ * response-only + single-outstanding discipline this stays ~1; a larger backlog
+ * means a non-conforming guest is flooding requests without reading replies, so
+ * we stop (the run's device is torn down by the host when the program ends).
+ */
+const MAX_PENDING_WRITES = 64
+
 export class DeviceMultiplexer {
   private readonly services = new Map<number, HostService>()
 
@@ -48,6 +56,7 @@ export class DeviceMultiplexer {
 class RunConnection {
   private readonly reader = new FrameReader()
   private writeChain: Promise<void> = Promise.resolve()
+  private pendingWrites = 0
   private fatal = false
   private disposed = false
   private readonly unsubscribe: () => void
@@ -135,6 +144,13 @@ class RunConnection {
 
   private sendFrame(channel: number, payload: Uint8Array): void {
     if (this.fatal || this.disposed) return
+    if (this.pendingWrites >= MAX_PENDING_WRITES) {
+      // A conforming guest keeps one request outstanding; an unbounded backlog
+      // is abuse. Stop writing (the stream is effectively lost for this run).
+      this.fatal = true
+      console.error('[python-graphics] outbound backlog exceeded; stopping')
+      return
+    }
     let frame: Uint8Array
     try {
       frame = encodeFrame(channel, payload)
@@ -143,12 +159,15 @@ class RunConnection {
       return
     }
     // Serialize all writes across channels; the engine rejects concurrent writes.
+    this.pendingWrites++
     this.writeChain = this.writeChain.then(async () => {
-      if (this.disposed || this.device.signal.aborted) return
       try {
+        if (this.disposed || this.device.signal.aborted) return
         await this.device.write(frame)
       } catch {
         // The device aborted mid-write (run ended); nothing to recover.
+      } finally {
+        this.pendingWrites--
       }
     })
   }
