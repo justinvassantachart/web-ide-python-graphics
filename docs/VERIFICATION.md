@@ -124,3 +124,20 @@ re-run before a release that bumps web-ide) and `validate:production`.
    WASM), open `/?program=<shapes|bounce|paint|turtle|hello>` plus
    `&service=multi`, `&instances=2`, or `&host=plain`, and drive the Graphics
    panel as in the table above.
+
+## Cloud verification
+
+2026-11-03 — Handoff-host run on macOS 15.7.3 (24G419, x86_64), Node
+24.19.0 / npm 11.17.0, Chromium 151.0.7922.34 via Playwright 1.63.0. A fresh
+packed consumer against the exact `web-ide-v0.10.0` release asset passed all
+16 browser scenarios and the UI audit (24 cases in one uninterrupted run),
+including 760×640 scaled input, stop/rerun, shared services, two IDEs, debug
+stepping, light/dark themes, empty states, focus rings, canvas sizing, text
+anchors, and opacity. Every page was cross-origin isolated; real CPython
+3.11.3 WASM and Monaco loaded successfully. Result: PASS, zero console messages,
+uncaught page errors, failed requests, or HTTP errors. Standalone validation
+(49 tests), the 23-file package check, packed consumer checks under bundler and
+strict NodeNext resolution, and initial GitHub CI also passed. Screenshots and
+QA scripts remain outside the repository. Empty-state checks used `hello`
+(no graphics commands); `nodraw` explicitly creates a Canvas and correctly
+displays an interactive canvas with zero objects.
