@@ -47,6 +47,27 @@ omit the stock `canvasPlugin` (it renders nothing for Python). Web IDE still
 serves pages with `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (required by the runtime).
 
+### Installation (exact)
+
+Not published to a registry. Install from packed tarballs:
+
+```sh
+# In the web-ide repo, build + pack both packages:
+npm run build:library && npm pack                          # -> web-ide-0.10.0.tgz
+cd packages/python-graphics && npm run build && npm pack    # -> web-ide-python-graphics-0.1.0.tgz
+
+# In your application:
+npm install /abs/path/web-ide-0.10.0.tgz \
+            /abs/path/web-ide-python-graphics-0.1.0.tgz \
+            react react-dom
+```
+
+Configure Vite as in [`consumer-check/app/vite.config.ts`](consumer-check/app/vite.config.ts):
+`vite-plugin-wasm`, the `node:` shim aliases, `dedupe: ['react','react-dom']`,
+`optimizeDeps.exclude: ['debugger-sh']`, `build.target: 'esnext'`, and the
+COOP/COEP response headers. `node consumer-check/run.mjs` performs this exact
+install + production build as an automated check.
+
 ### Student-facing Python
 
 ```python
