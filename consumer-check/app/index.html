@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>python-graphics packed consumer</title>
     <link rel="icon" href="data:," />
+    <script>
+      // QA control: `?theme=dark|light`. web-ide reads its persisted theme when
+      // its modules evaluate, so the choice must be stored before the module
+      // script runs.
+      var t = new URLSearchParams(location.search).get('theme')
+      if (t === 'dark' || t === 'light') localStorage.setItem('web-ide.theme', t)
+    </script>
     <style>html,body,#root{margin:0;height:100%;width:100%}</style>
   </head>
   <body>

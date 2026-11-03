@@ -19,11 +19,14 @@ import {
 import 'web-ide/styles.css'
 import { PROGRAMS, type ProgramKey } from './programs'
 
+// QA controls (see docs/VERIFICATION.md): program=<key>, host=plain,
+// service=multi, instances=2, panel=<15..57>, theme=dark|light (index.html).
 const params = new URLSearchParams(window.location.search)
 const program = (params.get('program') ?? 'shapes') as ProgramKey
 const withGraphics = params.get('host') !== 'plain'
 const withMulti = params.get('service') === 'multi'
 const twoInstances = params.get('instances') === '2'
+const panelPercent = Number(params.get('panel') ?? 55)
 
 // A mock independent service sharing the single device on channel 2.
 class ClockService implements HostService {
@@ -52,7 +55,7 @@ function buildConfig(): WebIDEConfiguration {
     runtimeProvider: 'web-ide.runtime.python',
     plugins,
     ...(withGraphics
-      ? { initialLayout: { selectedPanelId: 'web-ide.python-graphics', panelColumnPercent: 55 } }
+      ? { initialLayout: { selectedPanelId: 'web-ide.python-graphics', panelColumnPercent: panelPercent } }
       : {}),
   }
 }

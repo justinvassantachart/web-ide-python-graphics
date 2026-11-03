@@ -1,0 +1,22 @@
+from graphics import Canvas
+c = Canvas(400, 300, title="Mutation")
+a = c.create_rectangle(40, 40, 140, 140, fill="lightcoral")
+b = c.create_oval(110, 60, 210, 160, fill="gold")
+d = c.create_rectangle(60, 100, 160, 180, fill="skyblue", outline="navy", width=2)
+label = c.create_text(10, 10, "before", color="black", font_size=12)
+print("a bounds", a.get_bounds())
+a.move(120, 20)
+print("a after move", a.get_bounds())
+print("label bounds", label.get_bounds())
+b.set_fill("mediumseagreen")
+d.to_front()
+label.set_text("A moved, B recolored, C to front")
+hidden = c.create_oval(300, 200, 380, 280, fill="purple")
+hidden.hide()
+gone = c.create_rectangle(300, 40, 380, 120, fill="black")
+gone.delete()
+try:
+    gone.move(1, 1)
+except Exception as e:
+    print("deleted handle:", e)
+print("live objects:", len(c._live))

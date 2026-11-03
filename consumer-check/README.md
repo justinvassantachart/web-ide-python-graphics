@@ -25,5 +25,21 @@ run the app in a browser; the browser matrix is in
 
 `app/` is the consumer source (composes the plugin, a mock second service on the
 shared device, and exercises the public exports). `run.mjs` copies it to a temp
-dir, generates `programs.ts` from `../examples/programs`, writes the `file:`
-tarball dependencies, installs, and builds.
+dir, generates `programs.ts` from `../examples/programs` plus `qa-programs/`,
+writes the `file:` tarball dependencies, installs, and builds.
+
+## Driving the browser QA matrix
+
+```sh
+WEB_IDE_TARBALL=/abs/web-ide-0.10.0.tgz KEEP_CONSUMER_DIR=/abs/pg-consumer npm run check:consumer
+cd /abs/pg-consumer/app && node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4310 --strictPort
+```
+
+Then open `http://127.0.0.1:4310/?program=<key>` in Chromium and follow the
+scenario table in [`../docs/VERIFICATION.md`](../docs/VERIFICATION.md). Query
+controls: `program` (`shapes`, `bounce`, `paint`, `turtle`, `hello`, `noimport`,
+`mutation`, `events`, `error`, `tiny`, `tall`, `huge`, `anchors`, `opacity`,
+`nodraw`, `multi`), `theme=dark|light`, `panel=15..57` (panel column percent),
+`service=multi` (adds the mock channel-2 service), `instances=2` (two IDE
+mounts), `host=plain` (no graphics plugin). `qa-programs/*.py` are QA-only
+programs; `../examples/programs` are the documentation examples.
