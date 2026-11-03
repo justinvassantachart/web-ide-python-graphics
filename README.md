@@ -43,7 +43,11 @@ const configuration: WebIDEConfiguration = {
 ```
 
 The panel appears as a **Graphics** tab. Hosts adopting this companion normally
-omit the stock `canvasPlugin` (it renders nothing for Python). Web IDE still
+omit the stock `canvasPlugin` (it renders nothing for Python). The panel follows
+the workbench theme and shows a hint until the program issues its first graphics
+command; a program that never draws ends with a "finished without drawing" note
+rather than a blank canvas. The canvas is keyboard-focusable (focus ring on
+`:focus-visible`) and keyboard input reaches the program only while focused. Web IDE still
 serves pages with `Cross-Origin-Opener-Policy: same-origin` and
 `Cross-Origin-Embedder-Policy: require-corp` (required by the runtime).
 

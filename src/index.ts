@@ -16,6 +16,7 @@ export { createPythonGraphicsPlugin, pythonGraphicsPlugin } from './adapter/plug
 export type { PythonGraphicsPluginOptions } from './adapter/plugin'
 export { GraphicsPanel } from './adapter/GraphicsPanel'
 export { GraphicsController } from './adapter/controller'
+export type { GraphicsStatus } from './adapter/controller'
 export { controllerRegistry } from './adapter/registry'
 export {
   createGraphicsResource,

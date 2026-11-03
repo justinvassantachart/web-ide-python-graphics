@@ -48,6 +48,8 @@ export interface GraphicsServiceHost {
   measureText?(object: SceneObject & { kind: 'text' }): Bounds | null
   /** The run's device opened (scene has been reset). */
   onConnected?(): void
+  /** The guest applied its first graphics command this run (it uses graphics). */
+  onFirstCommand?(): void
   /** The run's device aborted; the last frame is frozen. */
   onDisconnected?(): void
 }
@@ -77,6 +79,7 @@ export class GraphicsService implements HostService {
   private readonly queue: GraphicsInput[] = []
   private connection: ServiceConnection | null = null
   private parked: Parked | null = null
+  private touched = false
 
   constructor(options: GraphicsServiceOptions) {
     this.host = options.host
@@ -99,6 +102,7 @@ export class GraphicsService implements HostService {
     this.connection = connection
     this.clearParked()
     this.queue.length = 0
+    this.touched = false
     this.scene.setCanvas(DEFAULT_CANVAS)
     this.host.onConnected?.()
     this.host.requestRender()
@@ -276,6 +280,10 @@ export class GraphicsService implements HostService {
         default:
           console.warn('[python-graphics] unknown command op:', String(message.op))
           return
+      }
+      if (!this.touched) {
+        this.touched = true
+        this.host.onFirstCommand?.()
       }
       this.host.requestRender()
     } catch (error) {

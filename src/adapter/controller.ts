@@ -16,10 +16,20 @@ import type { GraphicsInput } from '../service/events'
 import type { HostService } from '../mux/service'
 import type { MeasureFn } from '../renderer/SvgCanvas'
 
+/**
+ * What the panel should show. `phase` tracks the run's device; `drew` is true
+ * once the program applied at least one graphics command this run, so a
+ * program that never touches graphics does not produce a blank canvas.
+ */
+export interface GraphicsStatus {
+  readonly phase: 'never-run' | 'running' | 'ended'
+  readonly drew: boolean
+}
+
 export class GraphicsController {
   readonly service: GraphicsService
   readonly snapshot: Observable<SceneSnapshot>
-  readonly connected = new Observable<boolean>(false)
+  readonly status = new Observable<GraphicsStatus>({ phase: 'never-run', drew: false })
 
   private measurer: MeasureFn | null = null
   private renderScheduled = false
@@ -30,8 +40,9 @@ export class GraphicsController {
     const host: GraphicsServiceHost = {
       requestRender: () => this.scheduleRender(),
       measureText: (object) => this.measurer?.(object) ?? null,
-      onConnected: () => this.connected.set(true),
-      onDisconnected: () => this.connected.set(false),
+      onConnected: () => this.status.set({ phase: 'running', drew: false }),
+      onFirstCommand: () => this.status.set({ phase: 'running', drew: true }),
+      onDisconnected: () => this.status.set({ phase: 'ended', drew: this.status.value.drew }),
     }
     this.service = new GraphicsService({ host, scheduler })
     this.snapshot = new Observable<SceneSnapshot>(this.service.snapshot())

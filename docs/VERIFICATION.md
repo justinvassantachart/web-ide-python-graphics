@@ -68,6 +68,20 @@ Console across the whole session: **no errors or warnings from Web IDE or the
 companion** (the only entry was a `favicon.ico` 404 from the scratch QA page,
 since fixed). Network: every runtime asset request succeeded.
 
+### UI audit (Chromium, packed candidate; `.qa/screens/audit-*.png`)
+
+| Check | Result |
+| --- | --- |
+| Light and dark workbench themes | Panel chrome, hint color and focus ring follow `--color-chrome`, `--color-muted-foreground`, `--color-ring`. **PASS** |
+| Panel width 20% and 57%, viewport 1400×900 and 760×640 | Canvas scales to fit (`max-width/height: 100%`), centered, letterboxed with correct pointer mapping; no scrollbars/overflow. **PASS** |
+| Tall canvas 300×1200 | Scaled to panel height (808 px), no overflow. **PASS** |
+| Huge canvas 4096×4096 (the limit) | Scaled to 0.188×, text legible, no overflow. **PASS** |
+| Tiny canvas 120×80 | Rendered 1:1 (not upscaled; pixel-faithful for teaching), centered. **PASS** |
+| Text anchors vs `get_bounds()` | All 9 anchors' Python-reported bounds match the browser's `getBBox()` within 1.5 px. **PASS** |
+| Opacity / palette | Correct alpha compositing over the canvas background. **PASS** |
+| Empty states | **Fixed during audit**: the hint used to overlap an empty default canvas (unreadable across white/dark); a program that drew nothing left a blank white rectangle. Now: never-run → hint only; running-but-not-yet-drawn → "Waiting…"; ended without drawing → "finished without drawing anything"; canvas appears only once the program issues a graphics command. **PASS** |
+| Keyboard focus indicator (a11y) | **Fixed during audit**: the focusable canvas had `outline: none` with no replacement, so keyboard users could not see focus. Now a 2 px `--color-ring` ring on `:focus-visible` (keyboard), none for pointer focus — verified via Tab navigation (`boxShadow: rgb(0,95,184) 0 0 0 2px`). **PASS** |
+
 Not run: web-ide's own `npm run test:browser` suite (unchanged web-ide source;
 re-run before a release that bumps web-ide) and `validate:production`.
 

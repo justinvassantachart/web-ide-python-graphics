@@ -5,7 +5,7 @@
  * focused (never document-wide). Text is set as element textContent, never HTML.
  */
 
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { anchoredBox, type Bounds, type TextAnchor } from '../model/geometry'
 import type { SceneObject, SceneSnapshot } from '../model/scene'
@@ -40,6 +40,23 @@ const svgStyle: CSSProperties = {
   maxHeight: '100%',
   touchAction: 'none',
   outline: 'none',
+  borderRadius: 2,
+}
+
+// Keyboard input is focus-scoped, so keyboard users need to see when the canvas
+// has focus. Match the host's focus border (web-ide exposes `--color-ring`);
+// pointer-initiated focus does not show the ring, like `:focus-visible`.
+const focusRingStyle: CSSProperties = {
+  ...svgStyle,
+  boxShadow: '0 0 0 2px var(--color-ring, #0078d4)',
+}
+
+function focusIsVisible(element: Element): boolean {
+  try {
+    return element.matches(':focus-visible')
+  } catch {
+    return true // older engines: always show the ring rather than never
+  }
 }
 
 function textAnchorFor(anchor: TextAnchor): 'start' | 'middle' | 'end' {
@@ -102,6 +119,7 @@ export function SvgCanvas({ snapshot, onInput, bindMeasure }: SvgCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const measureTextRef = useRef<SVGTextElement>(null)
   const pointer = useRef({ down: false, button: 0, x0: 0, y0: 0, moved: false })
+  const [focusRing, setFocusRing] = useState(false)
   const { canvas, objects } = snapshot
 
   const toLogical = useCallback((clientX: number, clientY: number): [number, number] | null => {
@@ -189,10 +207,12 @@ export function SvgCanvas({ snapshot, onInput, bindMeasure }: SvgCanvasProps) {
         width={canvas.w}
         height={canvas.h}
         preserveAspectRatio="xMidYMid meet"
-        style={svgStyle}
+        style={focusRing ? focusRingStyle : svgStyle}
         tabIndex={0}
         role="img"
         aria-label={canvas.title ? `Graphics canvas: ${canvas.title}` : 'Graphics canvas'}
+        onFocus={(event) => setFocusRing(focusIsVisible(event.currentTarget))}
+        onBlur={() => setFocusRing(false)}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
