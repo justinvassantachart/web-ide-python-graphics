@@ -1,15 +1,17 @@
 # @web-ide/python-graphics
 
 A reusable, browser-based **introductory 2D graphics** companion for the
-[`web-ide`](../../README.md) component. A Python program draws shapes and text,
+[`web-ide`](https://github.com/justinvassantachart/web-ide) component. A Python program draws shapes and text,
 gets back stable handles, moves/updates/deletes them, reads mouse and keyboard
 input, and paces animation — all rendered in a Web IDE panel. It integrates
 through Web IDE's **public plugin and runtime APIs only**; it ships no second
 Python interpreter and contains no application code (no auth, AI, persistence,
 branding, or backend).
 
-> Status: v0.1, developed in-repo alongside web-ide. Not published to a
-> registry. Consume it from a packed tarball or a workspace `file:` reference.
+> Status: v0.1. A separately maintained companion to web-ide (like
+> `@web-ide/karel`), consuming only its public plugin and runtime APIs. Not
+> published to a registry; consume it from a packed tarball (see Installation)
+> or a `file:` reference. Verified against web-ide `0.10.0`.
 
 ## What it is
 
@@ -56,11 +58,12 @@ serves pages with `Cross-Origin-Opener-Policy: same-origin` and
 Not published to a registry. Install from packed tarballs:
 
 ```sh
-# In the web-ide repo, build + pack both packages:
-npm run build:library && npm pack                          # -> web-ide-0.10.0.tgz
-cd packages/python-graphics && npm run build && npm pack    # -> web-ide-python-graphics-0.1.0.tgz
+# 1. web-ide: use the release asset for the version you target, e.g.
+#    https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.10.0/web-ide-0.10.0.tgz
+# 2. this package: from a GitHub release asset, or build it yourself:
+npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.1.0.tgz
 
-# In your application:
+# 3. In your application:
 npm install /abs/path/web-ide-0.10.0.tgz \
             /abs/path/web-ide-python-graphics-0.1.0.tgz \
             react react-dom
@@ -69,8 +72,8 @@ npm install /abs/path/web-ide-0.10.0.tgz \
 Configure Vite as in [`consumer-check/app/vite.config.ts`](consumer-check/app/vite.config.ts):
 `vite-plugin-wasm`, the `node:` shim aliases, `dedupe: ['react','react-dom']`,
 `optimizeDeps.exclude: ['debugger-sh']`, `build.target: 'esnext'`, and the
-COOP/COEP response headers. `node consumer-check/run.mjs` performs this exact
-install + production build as an automated check.
+COOP/COEP response headers. `WEB_IDE_TARBALL=… npm run check:consumer` performs
+this exact install + production build as an automated check.
 
 ### Student-facing Python
 
@@ -138,16 +141,21 @@ capture or mutable global canvas. There is no image API in v1.
 - **Renderer**: SVG only; a Canvas 2D backend (for very high object counts) is a
   possible future addition behind the existing renderer seam.
 
-## Development (in-repo)
-
-The package reuses the repository's installed toolchain:
+## Development
 
 ```sh
-cd packages/python-graphics
-npm run validate     # eslint + tsc + vitest + vite build
+npm ci
+npm run validate                                   # eslint + tsc + vitest + vite build
+WEB_IDE_TARBALL=/abs/path/web-ide-0.10.0.tgz npm run check:consumer
 ```
 
-It does not modify web-ide's root `package.json`, so web-ide's own release and
-packed-consumer gates are unaffected. See [docs/DESIGN.md](docs/DESIGN.md) for
-rationale and [docs/INTEGRATION.md](docs/INTEGRATION.md) for the binding
-protocol and test vectors.
+`web-ide` is a devDependency pinned to the release tarball this version was
+verified against; it is only used for type-checking and the consumer check (the
+library build externalizes it). To develop against a local web-ide checkout
+instead, point the devDependency at `file:../web-ide` after building web-ide's
+`dist/` (the pattern web-ide documents for Nova).
+
+See [docs/DESIGN.md](docs/DESIGN.md) for rationale,
+[docs/INTEGRATION.md](docs/INTEGRATION.md) for the binding protocol and test
+vectors, [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification
+record, and [RELEASING.md](RELEASING.md) for the release process.

@@ -116,7 +116,7 @@ re-run before a release that bumps web-ide) and `validate:production`.
 
 ## Reproduce the live QA
 
-1. `cd packages/python-graphics && npm run validate` (lint, types, unit, build).
+1. `npm ci && npm run validate` (lint, types, unit, build).
 2. `node consumer-check/run.mjs` (packs both tarballs, installs, builds), or build
    the consumer in place and serve its `dist` with `vite preview` (COOP/COEP
    headers are configured in `consumer-check/app/vite.config.ts`).

@@ -289,7 +289,8 @@ peer gets a clean error, never undefined behavior.
 
 ## 7. Package / build / test
 
-- `packages/python-graphics` — standalone package `@web-ide/python-graphics`, MIT
+- Standalone repository/package `@web-ide/python-graphics` (originally developed
+  under web-ide's `packages/python-graphics`, then exported with history), MIT
   (mirrors repo license; no repo license change). Peer deps: `react`, `react-dom`,
   `web-ide`. Own `vite` library build (ES, externalize react + `web-ide*`), own
   `tsc`/`eslint`/`vitest`, declarations emitted + specifier-rewritten like web-ide.

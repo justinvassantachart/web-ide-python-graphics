@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # The web-ide release this version is verified against (see RELEASING.md).
+  WEB_IDE_VERSION: 0.10.0
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run validate
+      - run: npm run pack:check
+
+  consumer-check:
+    # Installs web-ide + this package from tarballs into a clean app and
+    # production-builds it under bundler and strict NodeNext resolution.
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Download the web-ide release tarball
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/web-ide-$WEB_IDE_VERSION.tgz" \
+            "https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v$WEB_IDE_VERSION/web-ide-$WEB_IDE_VERSION.tgz"
+      - run: WEB_IDE_TARBALL="$RUNNER_TEMP/web-ide-$WEB_IDE_VERSION.tgz" npm run check:consumer

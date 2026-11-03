@@ -1,6 +1,11 @@
-// Packed clean-consumer check. Packs web-ide + the companion, installs BOTH from
-// tarballs into a temp app (bare specifiers only), typechecks, and builds.
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+// Packed clean-consumer check. Packs the companion, installs it together with a
+// web-ide tarball into a temp app (bare specifiers only), typechecks under both
+// bundler and strict NodeNext resolution, and production-builds.
+//
+// The web-ide tarball comes from WEB_IDE_TARBALL (absolute path to a packed
+// web-ide-<version>.tgz, e.g. a GitHub release asset), so this check never
+// assumes a monorepo or sibling checkout.
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
@@ -8,10 +13,9 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const pkgRoot = path.resolve(here, '..')
-const repoRoot = path.resolve(pkgRoot, '../..')
 
 function sh(cmd, args, cwd, timeout = 900000) {
-  console.log(`\n$ (${path.relative(repoRoot, cwd)}) ${cmd} ${args.join(' ')}`)
+  console.log(`\n$ (${path.relative(pkgRoot, cwd) || '.'}) ${cmd} ${args.join(' ')}`)
   const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', timeout, env: process.env })
   if (r.stdout) process.stdout.write(r.stdout.slice(-1500))
   if (r.status !== 0 && r.stderr) process.stderr.write(r.stderr.slice(-3000))
@@ -24,15 +28,30 @@ function pack(dir, dest) {
   return path.join(dest, r.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1))
 }
 
+async function resolveWebIdeTarball() {
+  const configured = process.env.WEB_IDE_TARBALL
+  if (!configured) {
+    throw new Error(
+      'Set WEB_IDE_TARBALL to the absolute path of a packed web-ide tarball '
+      + '(e.g. the web-ide-<version>.tgz GitHub release asset).',
+    )
+  }
+  if (!path.isAbsolute(configured)) throw new Error('WEB_IDE_TARBALL must be an absolute path')
+  const info = await stat(configured)
+  if (!info.isFile()) throw new Error(`WEB_IDE_TARBALL is not a file: ${configured}`)
+  return configured
+}
+
 async function main() {
+  const webide = await resolveWebIdeTarball()
   const work = await mkdtemp(path.join(tmpdir(), 'pg-consumer-'))
   const artifacts = path.join(work, 'artifacts')
   const app = path.join(work, 'app')
   try {
     await mkdir(artifacts, { recursive: true })
-    const webide = pack(repoRoot, artifacts)
     const companion = pack(pkgRoot, artifacts)
-    console.log('packed:', path.basename(webide), '+', path.basename(companion))
+    console.log('web-ide tarball:', webide)
+    console.log('packed companion:', path.basename(companion))
 
     await cp(path.join(here, 'app'), app, { recursive: true })
 
