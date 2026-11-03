@@ -124,8 +124,9 @@ guest-controlled URL), with a hard pixel-dimension cap.
   `begin`/`commit` batch op is possible behind the version handshake but is not in
   v1.
 - **Final image.** When a run ends (program exit or Stop → device `signal`
-  abort), the last applied scene remains displayed (frozen) until the next run's
-  first `canvas`/`add`, which resets it.
+  abort), the last applied scene remains displayed (frozen). The next run resets
+  it when that run's device opens: the controller clears the scene on connect,
+  before the program's first command.
 
 ## 3. Test vectors
 
