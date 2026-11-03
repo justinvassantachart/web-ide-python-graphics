@@ -30,28 +30,47 @@ handoff checklist (`docs/testing.md`).
 | Web IDE root `eslint .` (after adding `packages/**` and `.qa/**` ignores) | PASS |
 | Web IDE root `tsc -b` | PASS |
 | Web IDE `vitest run` (full suite) | PASS at baseline (re-confirmed; web-ide source unchanged) |
-| `npm run test:browser` (Playwright, production bundle) | **NOT RUN** — see blocker |
-| Live real-Python in-browser E2E against the packaged candidate | **NOT RUN** — see blocker |
+| Live real-Python in-browser QA against the **packed** candidate (Chromium via Playwright; matrix below) | **PASS** (15 scenarios, 0 IDE/companion console errors) |
+| `npm run test:browser` (web-ide's own Playwright suite) | NOT RUN — web-ide source is unchanged; the companion is exercised by the matrix below |
 
-## Environment blocker (reported, not worked around)
+## Live browser QA (real engine, packed candidate)
 
-This environment cannot run a live browser E2E of the full IDE:
+Environment: Chromium (Playwright 1.64/1.65 alpha via the Kiro Playwright MCP
+browser, which runs outside the agent's network sandbox), viewport 1400×900 and
+760×640 (narrow). Target: the packed clean-consumer app (`web-ide-0.10.0.tgz` +
+`web-ide-python-graphics-0.1.0.tgz` installed by bare name), production
+`vite build` served by `vite preview` with COOP/COEP headers;
+`window.crossOriginIsolated === true`, `SharedArrayBuffer` available. Runtime:
+real debugger-sh WASM CPython 3.11.3 (assets fetched from runno.dev, all 200).
+Monaco 0.56.0 from jsDelivr. Screenshots: `.qa/screens/browser-*.png` (external
+review artifacts, not committed).
 
-1. **No launchable browser.** No Playwright Chromium is installed and the browser
-   download host is unreachable; launching system Google Chrome fails under the
-   OS sandbox.
-2. **Asset CDN blocked.** Outbound egress is allowlisted to the npm registry and
-   GitHub (so dependency install works), but general internet and
-   `cdn.jsdelivr.net` are blocked. Web IDE loads Monaco and the Python WASM
-   toolchain from jsDelivr at runtime, so the in-browser runtime cannot become
-   ready here regardless of the browser issue.
+| # | Scenario | Steps | Expected / actual |
+| --- | --- | --- | --- |
+| 1 | Shapes + text + layering (`shapes.py`) | Run | All 8 objects rendered in SVG; `to_back()` rect behind coral; centered text; terminal `shapes drawn`, exit 0. **PASS** |
+| 2 | Mutation / bounds / visibility / delete | Run `mutation` | `a.get_bounds()` 40,40 → after `move(120,20)` 160,60; **live text `getBBox` w=34.03 h=14** round-tripped to Python; hidden omitted; deleted handle raises; `to_front()` → last in DOM. **PASS** |
+| 3 | Mouse clicks + keyboard (1:1 canvas) | Run `events`; click (100,80),(300,200); keys `a`,`ArrowLeft`,`q` | Terminal `click 100 80`, `click 300 200`, `key a`, `key ArrowLeft`, `key q`, `done`; circles at click points; exit 0. **PASS** |
+| 4 | **Scaled coordinates** (narrow 760×640) | Same, canvas rendered 390.5×300 (letterboxed) | Python received `(100, 76.35)` / `(380, 286.35)` = exactly the browser's own inverse-CTM mapping (letterbox offset 3.56px); circles under the pointer. `get_event(timeout=25)` → `timeout`, clean exit. **PASS** |
+| 5 | Animation (`bounce.py`, host-timed `pause(16)`) | Run | Ball position changes continuously (64,35 → 84,86 in 500 ms). **PASS** |
+| 6 | **Stop mid-run → rerun** | Stop during animation; Run again; Stop | Final frame frozen (unchanged 600 ms after Stop), Ready, exit 0; rerun resets to exactly one ball and animates again; second Stop clean. **PASS** |
+| 7 | Error recovery + injection rejection | Run `error` | `fill="url(javascript:alert(1))"`, `font_size=0`, `width=-2` each raise `GraphicsError` client-side (no `url(` ever reaches the DOM); uncaught `ValueError` → Python traceback, exit 1, prior drawing retained, IDE back to Ready. **PASS** |
+| 8 | **Graphics + independent second service on one device** (`service=multi`) | Run `multi` | Channel-2 mock "clock" request answered `{'id':7,'ok':True,'result':{'now':1234}}`; graphics continues after it (2 shapes + text). **PASS** |
+| 9 | Unknown channel is recoverable (graphics-only composition) | Run `multi` | Host control `error: Unknown channel 2` → clean `GraphicsError`; graphics keeps working; exit 0. **PASS** |
+| 10 | **Two simultaneous IDE instances** | `instances=2`; Run both | Left: 480×320 white, 8 shapes, exit 0. Right: 400×300 dark, 1 animating ball, Running. No cross-talk; independent toolbars/terminals. **PASS** |
+| 11 | **Debug** | Debug `shapes.py`; Step Over ×3; Continue | Paused at line 4 (canvas not yet created, 0 shapes); after stepping lines 4→6→7 the canvas exists and exactly skyblue rect then gold oval appear; Continue → 8 shapes, exit 0, debug toolbar gone. **PASS** |
+| 12 | **Host without graphics** (`host=plain`) | Run `noimport` | No Graphics tab (panels: Variables only); `import graphics` → `ModuleNotFoundError`; program continues, exit 0 — Web IDE unaffected by the companion's absence. **PASS** |
+| 13 | Execution-only resource hidden | Inspect explorer | Only `main.py` in the tree; no `graphics` entry. **PASS** |
+| 14 | Paint: drag + keyboard color switch | `r`, 5-point drag, `g`, 5-point drag | 4 crimson + 4 seagreen segments, width 3. **PASS** |
+| 15 | Turtle-style adapter | Run `turtle_spiral.py` | 120 rebeccapurple segments, exit 0. **PASS** |
 
-Consequence: the real Python program cannot be executed in a real browser in this
-environment, and `npm run test:browser` / `npm run validate:production` cannot
-complete here. The byte-device transport and Monaco/runtime UI are Web IDE's
-already-tested surface; what the companion adds is covered by the evidence below.
+Console across the whole session: **no errors or warnings from Web IDE or the
+companion** (the only entry was a `favicon.ico` 404 from the scratch QA page,
+since fixed). Network: every runtime asset request succeeded.
 
-## Evidence delivered in place of the live E2E
+Not run: web-ide's own `npm run test:browser` suite (unchanged web-ide source;
+re-run before a release that bumps web-ide) and `validate:production`.
+
+## Additional evidence
 
 - **Protocol/model/service/mux contract tests** (committed, 42) plus a **jsdom
   renderer smoke** (committed, 6) covering shape/text/anchor/visibility/z-order
@@ -74,17 +93,19 @@ already-tested surface; what the companion adds is covered by the evidence below
 
 ## Not claimed
 
-- No browser compatibility is claimed from execution (none was possible here).
+- Browser support is demonstrated for **Chromium only** (the browser exercised
+  above). Firefox/Safari were not run.
 - No full Tkinter/Pygame/Stanford/turtle parity; only the documented core API and
   a turtle-*style* adapter.
-- Images are unsupported in v1 (documented follow-up).
+- There is no image API in v1 (documented follow-up).
 
-## Reproduce the live E2E where a browser + CDN are available
+## Reproduce the live QA
 
 1. `cd packages/python-graphics && npm run validate` (lint, types, unit, build).
-2. From repo root with Chromium installed and jsDelivr reachable, build the packed
-   consumer (`node .qa/packed-consumer.mjs`) and serve `.qa/consumer` with
-   `vite preview` (COOP/COEP headers already configured), then drive the Graphics
-   panel: Run `shapes`, assert the SVG shapes/text; `paint`, assert click/drag
-   draws at scaled coordinates; stop/rerun; two instances isolated; `host=plain`
-   runs without a Graphics tab; `service=multi` coexists.
+2. `node consumer-check/run.mjs` (packs both tarballs, installs, builds), or build
+   the consumer in place and serve its `dist` with `vite preview` (COOP/COEP
+   headers are configured in `consumer-check/app/vite.config.ts`).
+3. With Chromium and network access to jsDelivr (Monaco) and runno.dev (Python
+   WASM), open `/?program=<shapes|bounce|paint|turtle|hello>` plus
+   `&service=multi`, `&instances=2`, or `&host=plain`, and drive the Graphics
+   panel as in the table above.
