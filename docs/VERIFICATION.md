@@ -26,7 +26,7 @@ handoff checklist (`docs/testing.md`).
 | Cross-language framing agreement (Python frame ⇄ TS reader, both directions) | PASS |
 | Python client ⇄ TS host end-to-end (real example programs → captured commands → host) | PASS (0 commands dropped) |
 | Client-subset validation property (width<0, font_size≤0, UTF-16 text length) | PASS |
-| Packed clean-consumer: pack web-ide + companion, clean `npm install` of both tarballs, `tsc`, `vite build` | PASS |
+| Packed clean-consumer: pack web-ide + companion, clean `npm install` of both tarballs, bundler `tsc`, **strict NodeNext `tsc` of the installed declaration graph**, `vite build` | PASS |
 | Web IDE root `eslint .` (after adding `packages/**` and `.qa/**` ignores) | PASS |
 | Web IDE root `tsc -b` | PASS |
 | Web IDE `vitest run` (full suite) | PASS at baseline (re-confirmed; web-ide source unchanged) |
@@ -62,6 +62,7 @@ review artifacts, not committed).
 | 13 | Execution-only resource hidden | Inspect explorer | Only `main.py` in the tree; no `graphics` entry. **PASS** |
 | 14 | Paint: drag + keyboard color switch | `r`, 5-point drag, `g`, 5-point drag | 4 crimson + 4 seagreen segments, width 3. **PASS** |
 | 15 | Turtle-style adapter | Run `turtle_spiral.py` | 120 rebeccapurple segments, exit 0. **PASS** |
+| 16 | Themed panel (post-review fix) | Rebuilt packed consumer; Run `shapes.py` in the light workbench | Panel chrome follows `--color-chrome` (light), hint uses `--color-muted-foreground`; scene renders identically; 0 console messages. **PASS** |
 
 Console across the whole session: **no errors or warnings from Web IDE or the
 companion** (the only entry was a `favicon.ico` 404 from the scratch QA page,
