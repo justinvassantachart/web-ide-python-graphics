@@ -286,9 +286,10 @@ class Event:
 class GraphicsObject:
     """A stable handle to one drawn object. Methods mutate the live scene."""
 
-    def __init__(self, canvas, object_id):
+    def __init__(self, canvas, object_id, shape=None):
         self._canvas = canvas
         self.id = object_id
+        self.shape = shape
         self._deleted = False
 
     def _check(self):
@@ -312,7 +313,10 @@ class GraphicsObject:
         return self._update(outline=_color(color, "outline"))
 
     def set_color(self, color):
-        """Sets whichever paint is primary (fill for most shapes/text)."""
+        """Sets the object's primary paint: the stroke for lines/polylines
+        (which have no interior), the fill for every other shape and text."""
+        if self.shape in ("line", "polyline"):
+            return self._update(outline=_color(color, "color"))
         return self._update(fill=_color(color, "color"))
 
     def set_width(self, width):
@@ -459,7 +463,7 @@ class Canvas:
         self._next += 1
         self._conn.command("add", id=object_id, shape=shape, **fields)
         self._live.add(object_id)
-        return GraphicsObject(self, object_id)
+        return GraphicsObject(self, object_id, shape)
 
     # ---- scene control ----------------------------------------------------
 

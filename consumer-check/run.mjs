@@ -52,7 +52,7 @@ async function main() {
 
     await writeFile(path.join(app, 'package.json'), JSON.stringify({
       name: 'python-graphics-packed-consumer', private: true, version: '0.0.0', type: 'module',
-      scripts: { build: 'tsc -p tsconfig.json && vite build' },
+      scripts: { build: 'tsc -p tsconfig.json && tsc -p tsconfig.nodenext.json && vite build' },
       dependencies: {
         react: '^19.2.0', 'react-dom': '^19.2.0',
         'web-ide': `file:${webide}`, '@web-ide/python-graphics': `file:${companion}`,

@@ -13,8 +13,10 @@ node consumer-check/run.mjs
 
 Requirements: network access to the npm registry and the engine's GitHub release
 (for `web-ide`'s `debugger-sh` dependency). The check does a clean
-`npm install --ignore-scripts`, a strict `tsc` against the installed declaration
-graph, and `vite build` of the production bundle. It does not run the app in a
+`npm install --ignore-scripts`, a bundler-resolution `tsc` of the app, a strict
+`moduleResolution: NodeNext` compile of the installed declaration graph
+(`tsconfig.nodenext.json`, `skipLibCheck: false`), and `vite build` of the
+production bundle. It does not run the app in a
 browser (that needs a browser and the runtime asset CDN); see
 [`../docs/VERIFICATION.md`](../docs/VERIFICATION.md).
 

@@ -17,12 +17,14 @@ import { controllerRegistry } from './registry'
 
 const EMPTY_SNAPSHOT: SceneSnapshot = { canvas: DEFAULT_CANVAS, objects: [], version: 0 }
 
+// Follow the host workbench theme (light/dark) through Web IDE's public CSS
+// variables, with neutral fallbacks for use outside a Web IDE mount.
 const wrapperStyle: CSSProperties = {
   position: 'relative',
   width: '100%',
   height: '100%',
   minHeight: 0,
-  background: '#1e1e1e',
+  background: 'var(--color-chrome, #1e1e1e)',
 }
 
 const hintStyle: CSSProperties = {
@@ -33,7 +35,7 @@ const hintStyle: CSSProperties = {
   justifyContent: 'center',
   padding: 24,
   textAlign: 'center',
-  color: '#c8c8c8',
+  color: 'var(--color-muted-foreground, #c8c8c8)',
   font: '13px/1.5 system-ui, sans-serif',
   pointerEvents: 'none',
 }
