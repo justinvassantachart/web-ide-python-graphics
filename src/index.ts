@@ -86,3 +86,10 @@ export { encodeJson, decodeJsonObject, ProtocolError } from './protocol/codec'
 
 // ---- Utilities -------------------------------------------------------------
 export { Observable } from './observable'
+
+// Neutral transport is also available without the React/graphics entry point.
+export { createJsonService, ServiceError } from './transport/json-service'
+export type { JsonServiceOptions } from './transport/json-service'
+export type { ServiceRequest } from './mux/service'
+export { TRANSPORT_PYTHON_SOURCES, TRANSPORT_PY_PATH } from './transport/resources'
+export { parseSceneSnapshot, isSceneSnapshot, parseGraphicsInput, isGraphicsInput } from './validation'

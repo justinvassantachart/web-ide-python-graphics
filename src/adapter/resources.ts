@@ -9,6 +9,7 @@
 import CORE_PY from '../python/graphics/__init__.py?raw'
 import TURTLE_PY from '../python/graphics/turtle.py?raw'
 import type { IDEWorkspaceResourceContribution } from 'web-ide'
+import { TRANSPORT_PYTHON_SOURCES } from '../transport/resources'
 
 export const GRAPHICS_RESOURCE_ID = 'web-ide.python-graphics.resource'
 /** Guest path of the core module: `import graphics`. */
@@ -18,6 +19,7 @@ export const GRAPHICS_TURTLE_PY_PATH = '/graphics/turtle.py'
 
 /** The raw Python sources, exported for hosts that compose resources manually. */
 export const GRAPHICS_PYTHON_SOURCES: Readonly<Record<string, string>> = {
+  ...TRANSPORT_PYTHON_SOURCES,
   [GRAPHICS_PY_PATH]: CORE_PY,
   [GRAPHICS_TURTLE_PY_PATH]: TURTLE_PY,
 }

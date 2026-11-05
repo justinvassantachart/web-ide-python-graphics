@@ -125,17 +125,17 @@ offset  size  field
 | ------- | -------------------- | --------------------------------------- |
 | 0       | multiplexer control  | `hello`/`welcome`/`error`               |
 | 1       | graphics service     | default graphics channel                |
-| 2..255  | host-injected services | each host service claims a channel     |
+| 2..65535 | host-injected services | each host service claims a channel    |
 
-Channel assignment is static per composition and is part of the **handoff contract**
-(§6): a host adding a second service agrees the channel number with that service's
-guest client out of band. Graphics is always channel 1.
+Channel assignment is static per composition and advertised by the handshake.
+The neutral Python singleton resolves channels by capability; graphics defaults
+to channel 1 but can use another advertised channel.
 
 ### 2.3 Control channel (0) messages (JSON)
 
 - guest→host `{"t":"hello","mux":1}`
 - host→guest `{"t":"welcome","mux":1,"services":[{"channel":1,"capability":"graphics","version":1}, ...]}`
-- host→guest `{"t":"error","code":"...","message":"..."}` (fatal mux error before teardown)
+- host→guest `{"t":"error","code":"...","message":"..."}` (recoverable rejection of a well-formed control/service request)
 
 The guest performs this handshake once; an unsupported `mux` version → `error` →
 client raises a clear exception instead of guessing.
@@ -143,7 +143,7 @@ client raises a clear exception instead of guessing.
 ## 3. Graphics service protocol (channel 1, JSON, version 1)
 
 Guest→host objects carry `"op"`. **Requests** also carry `"id"` (uint32, monotonic)
-and expect exactly one response; **commands** omit `id` and never get a response.
+and expect exactly one response; **commands** omit `id` or carry a string object id and never get a response.
 Host→guest responses: `{"id":N,"ok":true,"result":{...}}` or
 `{"id":N,"ok":false,"error":{"code":"...","message":"..."}}`.
 
@@ -268,7 +268,7 @@ oversized text/points, and unknown object ids are rejected (`bad_request` /
   - `pythonGraphicsPlugin` — default, graphics only.
   - `createPythonGraphicsPlugin({ createAdditionalServices })` — graphics on
     ch.1 + host services on ch.2…; or
-  - `new DeviceMultiplexer({ services: [graphicsService, …] }).opener` +
+  - `new DeviceMultiplexer({ services: [graphicsService, …], onFatal: () => session.stop() }).opener` +
     `GraphicsService` for a host that wants to own `registerHostDevice` itself.
 - Web IDE remains fully usable without the companion (purely additive, separate pkg).
 
@@ -280,10 +280,11 @@ Owned/versioned by this package:
 - **Graphics service**: `capability="graphics"`, `version=1`, the op/result/event
   vocabulary and limits above.
 
-A host composing an additional service agrees: (a) its channel number (≥2),
-(b) that it owns framing for its channel payloads, (c) the serial-write discipline
-(the multiplexer serializes all writes across channels), (d) that transport-fatal
-errors tear down the shared connection. Breaking changes bump `VERSION` (transport)
+A host composing an additional service follows the shared JSON request/response
+profile, uses capability discovery through the neutral Python singleton, and
+provides an `onFatal` callback that stops its owning runtime. The mux enforces
+global correlation, deadlines, serial writes and bounded queues. Detailed 0.2
+migration and cancellation behavior are normative in `INTEGRATION.md`. Breaking changes bump `VERSION` (transport)
 or the service `version` (graphics) with negotiation in `hello`/`init`; a mismatched
 peer gets a clean error, never undefined behavior.
 

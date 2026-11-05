@@ -70,6 +70,13 @@ export class GraphicsController {
     this.snapshot.set(this.service.snapshot())
   }
 
+  /** Clear stale output between runs, including runs with no graphics service. */
+  reset(): void {
+    this.service.reset()
+    this.status.set({ phase: 'never-run', drew: false })
+    this.flush()
+  }
+
   dispose(): void {
     this.disposed = true
     this.measurer = null

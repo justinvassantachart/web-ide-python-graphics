@@ -65,11 +65,21 @@ export function createPythonGraphicsPlugin(
       const additional = options.createAdditionalServices?.() ?? []
       const multiplexer = new DeviceMultiplexer({
         services: [controller.hostService, ...additional],
+        onFatal: () => session.stop(),
       })
 
       let registration: { dispose(): void }
+      let closeActive: (() => void) | null = null
       try {
-        registration = session.registerHostDevice(multiplexer.opener)
+        registration = session.registerHostDevice((device) => {
+          closeActive?.()
+          const close = multiplexer.opener(device)
+          closeActive = close
+          return () => {
+            close()
+            if (closeActive === close) closeActive = null
+          }
+        })
       } catch (error) {
         console.error('[python-graphics] registerHostDevice failed', error)
         controller.dispose()
@@ -80,6 +90,12 @@ export function createPythonGraphicsPlugin(
       return () => {
         controllerRegistry.delete(session, controller)
         registration.dispose()
+        // Registration disposal only affects future runs. Explicitly release
+        // this active connection and stop its runtime to unblock guest reads.
+        const close = closeActive
+        closeActive = null
+        close?.()
+        if (close) session.stop()
         controller.dispose()
       }
     },

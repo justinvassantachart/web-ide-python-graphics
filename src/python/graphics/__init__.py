@@ -26,11 +26,9 @@ The module name ``graphics`` (and ``graphics.turtle``) is reserved by the
 companion; a workspace file named ``graphics.py`` is shadowed by this package.
 """
 
-import json
 import math
-import os
 import re
-import struct
+from web_ide_transport import get_connection, TransportError, TransportClosed
 
 __all__ = [
     "Canvas",
@@ -39,16 +37,6 @@ __all__ = [
     "GraphicsError",
     "GraphicsClosed",
 ]
-
-# ---- wire protocol constants (keep in lockstep with src/protocol/constants.ts)
-_DEVICE_PATH = "/dev/debugger-sh-host"
-_MAGIC = 0xC7
-_VERSION = 1
-_CHANNEL_CONTROL = 0
-_CHANNEL_GRAPHICS = 1
-_HEADER = struct.Struct(">BBHI")  # magic, version, channel(u16), length(u32)
-_MAX_FRAME_BYTES = 262144
-_U32 = 0xFFFFFFFF
 
 # Mirrors src/model/color.ts so invalid colors raise in Python instead of being
 # silently dropped by the host. Must stay a subset-or-equal of the host set.
@@ -88,6 +76,8 @@ _ANCHORS = frozenset(["nw", "n", "ne", "w", "center", "e", "sw", "s", "se"])
 # Client-side limits (mirror of the host; prevents silent drops).
 _MAX_OBJECTS = 10000
 _MAX_POINTS = 10000
+_MAX_SCENE_POINTS = 100000
+_MAX_SCENE_TEXT_LEN = 1048576
 _MAX_TEXT_LEN = 4096
 _MAX_CANVAS_DIM = 4096
 _MAX_PAUSE_MS = 60000
@@ -175,96 +165,33 @@ def _points(value, field):
 
 
 class _Connection:
-    """Single duplex connection to the host device (one per program)."""
-
+    """Graphics facade; the neutral singleton owns the shared byte device."""
     def __init__(self):
         try:
-            self._fd = os.open(_DEVICE_PATH, os.O_RDWR)
-        except OSError as exc:
-            raise GraphicsError(
-                "graphics device unavailable; run this program inside a Web IDE "
-                "with the python-graphics companion enabled"
-            ) from exc
-        self._buf = bytearray()
-        self._next_id = 1
-        # Multiplexer handshake, then graphics init/version negotiation.
-        self._send(_CHANNEL_CONTROL, {"t": "hello", "mux": _VERSION})
-        welcome = self._read_json(_CHANNEL_CONTROL)
-        if welcome.get("t") != "welcome":
-            raise GraphicsError("unexpected control reply: %r" % welcome.get("t"))
-        services = {s.get("capability"): s for s in welcome.get("services", [])}
-        gfx = services.get("graphics")
-        if not gfx:
-            raise GraphicsError("host does not provide a graphics service")
-        if gfx.get("version") != 1:
-            raise GraphicsError("unsupported graphics service version: %r" % gfx.get("version"))
+            self._service = get_connection().service("graphics", version=1)
+        except TransportClosed as exc:
+            raise GraphicsClosed(str(exc)) from exc
+        except TransportError as exc:
+            raise GraphicsError(str(exc), exc.code) from exc
 
     def close(self):
-        try:
-            os.close(self._fd)
-        except OSError:
-            pass
-
-    def _write_all(self, data):
-        view = memoryview(data)
-        sent = 0
-        while sent < len(view):
-            try:
-                sent += os.write(self._fd, view[sent:])
-            except OSError as exc:
-                raise GraphicsClosed() from exc
-
-    def _read_exact(self, count):
-        while len(self._buf) < count:
-            try:
-                chunk = os.read(self._fd, 65536)
-            except OSError as exc:
-                raise GraphicsClosed() from exc
-            if not chunk:
-                raise GraphicsClosed()
-            self._buf.extend(chunk)
-        out = bytes(self._buf[:count])
-        del self._buf[:count]
-        return out
-
-    def _send(self, channel, obj):
-        payload = json.dumps(obj, allow_nan=False, separators=(",", ":")).encode("utf-8")
-        if len(payload) > _MAX_FRAME_BYTES:
-            raise GraphicsError("message too large (%d bytes)" % len(payload))
-        self._write_all(_HEADER.pack(_MAGIC, _VERSION, channel, len(payload)) + payload)
-
-    def _read_json(self, expected_channel):
-        header = self._read_exact(_HEADER.size)
-        magic, version, channel, length = _HEADER.unpack(header)
-        if magic != _MAGIC or version != _VERSION:
-            raise GraphicsClosed("protocol desync")
-        if length > _MAX_FRAME_BYTES:
-            raise GraphicsClosed("oversized frame")
-        payload = self._read_exact(length) if length else b""
-        message = json.loads(payload.decode("utf-8")) if payload else {}
-        if channel != expected_channel:
-            if channel == _CHANNEL_CONTROL and message.get("t") == "error":
-                raise GraphicsError(message.get("message", "protocol error"), message.get("code"))
-            raise GraphicsClosed("unexpected channel %d" % channel)
-        return message
+        self._service.close()
 
     def command(self, op, **fields):
-        fields["op"] = op
-        self._send(_CHANNEL_GRAPHICS, fields)
+        return self._call(False, op, fields)
 
     def request(self, op, **fields):
-        request_id = self._next_id
-        self._next_id = 1 if request_id >= _U32 else request_id + 1
-        fields["op"] = op
-        fields["id"] = request_id
-        self._send(_CHANNEL_GRAPHICS, fields)
-        message = self._read_json(_CHANNEL_GRAPHICS)
-        if message.get("id") != request_id:
-            raise GraphicsClosed("response id mismatch")
-        if message.get("ok"):
-            return message.get("result") or {}
-        error = message.get("error") or {}
-        raise GraphicsError(error.get("message", "request failed"), error.get("code"))
+        return self._call(True, op, fields)
+
+    def _call(self, request, op, fields):
+        try:
+            if request:
+                return self._service.request(op, **fields)
+            return self._service.command(op, **fields)
+        except TransportClosed as exc:
+            raise GraphicsClosed(str(exc)) from exc
+        except TransportError as exc:
+            raise GraphicsError(str(exc), exc.code) from exc
 
 
 class Event:
@@ -391,6 +318,10 @@ class Canvas:
         self._conn.request("init", client="python-graphics", version=1)
         self._next = 1
         self._live = set()
+        self._resources = {}
+        self._text_ids = set()
+        self._point_count = 0
+        self._text_length = 0
         self._closed = False
         w = int(min(max(_num(width, "width"), 1), _MAX_CANVAS_DIM))
         h = int(min(max(_num(height, "height"), 1), _MAX_CANVAS_DIM))
@@ -459,10 +390,18 @@ class Canvas:
         self._ensure_open()
         if len(self._live) >= _MAX_OBJECTS:
             raise GraphicsError("too many objects (max %d)" % _MAX_OBJECTS, code="too_many_objects")
+        point_count = len(fields.get("points", []))
+        text_length = _text_len(fields.get("text", ""))
+        self._check_budget(point_count, text_length)
         object_id = "g%d" % self._next
         self._next += 1
         self._conn.command("add", id=object_id, shape=shape, **fields)
         self._live.add(object_id)
+        self._resources[object_id] = (point_count, text_length)
+        if shape == "text":
+            self._text_ids.add(object_id)
+        self._point_count += point_count
+        self._text_length += text_length
         return GraphicsObject(self, object_id, shape)
 
     # ---- scene control ----------------------------------------------------
@@ -470,6 +409,10 @@ class Canvas:
     def clear(self):
         self._ensure_open()
         self._live.clear()
+        self._resources.clear()
+        self._text_ids.clear()
+        self._point_count = 0
+        self._text_length = 0
         self._conn.command("clear")
 
     def move(self, obj, dx, dy):
@@ -480,13 +423,26 @@ class Canvas:
 
     def _delete(self, object_id):
         self._live.discard(object_id)
+        points, text = self._resources.pop(object_id, (0, 0))
+        self._text_ids.discard(object_id)
+        self._point_count -= points
+        self._text_length -= text
         self._conn.command("delete", id=object_id)
 
     def _command(self, op, id, **fields):
         self._ensure_open()
         if id not in self._live:
             raise GraphicsError("unknown object %r" % id, code="unknown_object")
+        points, text = self._resources.get(id, (0, 0))
+        new_text = _text_len(fields["props"]["text"]) if op == "update" and id in self._text_ids and "text" in fields.get("props", {}) else text
+        self._check_budget(0, new_text - text)
         self._conn.command(op, id=id, **fields)
+        self._resources[id] = (points, new_text)
+        self._text_length += new_text - text
+
+    def _check_budget(self, points, text):
+        if self._point_count + points > _MAX_SCENE_POINTS or self._text_length + text > _MAX_SCENE_TEXT_LEN:
+            raise GraphicsError("scene aggregate geometry or text limit exceeded", "limit_exceeded")
 
     def _bounds(self, object_id):
         self._ensure_open()
@@ -506,8 +462,13 @@ class Canvas:
         if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float))):
             raise GraphicsError("timeout must be a number of seconds or None")
         try:
-            kwargs = {} if timeout is None else {"timeout_ms": int(min(max(timeout, 0), _MAX_PAUSE_MS / 1000) * 1000)}
-            result = self._conn.request("wait_event", **kwargs)
+            # An unbounded wait is repeated bounded polling. It preserves the
+            # public blocking API without disabling the host transport watchdog.
+            timeout_ms = _MAX_PAUSE_MS if timeout is None else int(min(max(_num(timeout, "timeout"), 0), _MAX_PAUSE_MS / 1000) * 1000)
+            while True:
+                result = self._conn.request("wait_event", timeout_ms=timeout_ms)
+                if timeout is not None or result.get("event"):
+                    break
         except GraphicsClosed:
             self._closed = True
             return None

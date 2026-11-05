@@ -6,3 +6,7 @@ dist/
 .DS_Store
 # Local QA scratch (screenshots, throwaway consumer apps)
 .qa/
+
+# Python regression-test bytecode
+__pycache__/
+*.py[cod]

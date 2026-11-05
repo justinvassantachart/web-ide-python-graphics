@@ -2,15 +2,15 @@
  * Transport framing: 8-byte header + payload, length-prefixed, big-endian.
  * Both directions use the same format. The reader accumulates arbitrary byte
  * chunks (the engine delivers ≤64 KiB wakes / partial reads) and yields complete
- * frames, enforcing {@link LIMITS.MAX_FRAME_BYTES} before buffering a payload.
+ * frames, enforcing {@link MAX_FRAME_BYTES} before buffering a payload.
  */
 
 import {
   FRAME_HEADER_BYTES,
   FRAME_MAGIC,
-  LIMITS,
+  MAX_FRAME_BYTES,
   TRANSPORT_VERSION,
-} from './constants'
+} from '../transport/constants'
 
 export interface Frame {
   readonly channel: number
@@ -33,9 +33,9 @@ export function encodeFrame(channel: number, payload: Uint8Array): Uint8Array {
   if (!Number.isInteger(channel) || channel < 0 || channel > 0xffff) {
     throw new RangeError(`Frame channel out of range: ${channel}`)
   }
-  if (payload.length > LIMITS.MAX_FRAME_BYTES) {
+  if (payload.length > MAX_FRAME_BYTES) {
     throw new RangeError(
-      `Frame payload ${payload.length} exceeds MAX_FRAME_BYTES ${LIMITS.MAX_FRAME_BYTES}`,
+      `Frame payload ${payload.length} exceeds MAX_FRAME_BYTES ${MAX_FRAME_BYTES}`,
     )
   }
   const frame = new Uint8Array(FRAME_HEADER_BYTES + payload.length)
@@ -55,69 +55,54 @@ export function encodeFrame(channel: number, payload: Uint8Array): Uint8Array {
  * (and its length bound checked) before the payload is allowed to accumulate.
  */
 export class FrameReader {
-  // Pending bytes not yet consumed into a frame. Kept as a single buffer that
-  // is compacted as frames are consumed; bounded by the frame limit above.
-  private buffer = new Uint8Array(0)
+  private readonly header = new Uint8Array(FRAME_HEADER_BYTES)
+  private headerBytes = 0
+  private payload: Uint8Array | null = null
+  private payloadBytes = 0
+  private channel = 0
 
   push(chunk: Uint8Array): Frame[] {
-    if (chunk.length === 0) return []
-    this.append(chunk)
-    return this.drain()
-  }
-
-  /** Bytes currently buffered (awaiting a complete frame). */
-  get pendingBytes(): number {
-    return this.buffer.length
-  }
-
-  private append(chunk: Uint8Array): void {
-    if (this.buffer.length === 0) {
-      this.buffer = chunk.slice()
-      return
-    }
-    const next = new Uint8Array(this.buffer.length + chunk.length)
-    next.set(this.buffer, 0)
-    next.set(chunk, this.buffer.length)
-    this.buffer = next
-  }
-
-  private drain(): Frame[] {
     const frames: Frame[] = []
-    let offset = 0
-    while (this.buffer.length - offset >= FRAME_HEADER_BYTES) {
-      const view = new DataView(
-        this.buffer.buffer,
-        this.buffer.byteOffset + offset,
-        FRAME_HEADER_BYTES,
-      )
-      const magic = view.getUint8(0)
-      const version = view.getUint8(1)
-      if (magic !== FRAME_MAGIC) {
-        throw new FatalFrameError(
-          `Bad frame magic 0x${magic.toString(16)} (expected 0x${FRAME_MAGIC.toString(16)})`,
-        )
-      }
-      if (version !== TRANSPORT_VERSION) {
-        throw new FatalFrameError(
-          `Unsupported transport version ${version} (expected ${TRANSPORT_VERSION})`,
-        )
-      }
-      const channel = view.getUint16(2, false)
-      const length = view.getUint32(4, false)
-      if (length > LIMITS.MAX_FRAME_BYTES) {
-        throw new FatalFrameError(
-          `Frame length ${length} exceeds MAX_FRAME_BYTES ${LIMITS.MAX_FRAME_BYTES}`,
-        )
-      }
-      const frameEnd = offset + FRAME_HEADER_BYTES + length
-      if (this.buffer.length < frameEnd) break // wait for the rest of the payload
-      const payloadStart = offset + FRAME_HEADER_BYTES
-      frames.push({ channel, payload: this.buffer.slice(payloadStart, frameEnd) })
-      offset = frameEnd
-    }
-    if (offset > 0) {
-      this.buffer = this.buffer.slice(offset)
-    }
+    this.consume(chunk, (frame) => frames.push(frame))
     return frames
+  }
+
+  /** Processes frames as they complete, without accumulating a frame queue. */
+  consume(chunk: Uint8Array, receive: (frame: Frame) => void): void {
+    let offset = 0
+    while (offset < chunk.length) {
+      if (this.headerBytes < FRAME_HEADER_BYTES) {
+        const length = Math.min(FRAME_HEADER_BYTES - this.headerBytes, chunk.length - offset)
+        this.header.set(chunk.subarray(offset, offset + length), this.headerBytes)
+        this.headerBytes += length
+        offset += length
+        if (this.headerBytes < FRAME_HEADER_BYTES) return
+        const view = new DataView(this.header.buffer)
+        if (view.getUint8(0) !== FRAME_MAGIC) throw new FatalFrameError('Bad frame magic')
+        if (view.getUint8(1) !== TRANSPORT_VERSION) throw new FatalFrameError('Unsupported transport version')
+        this.channel = view.getUint16(2, false)
+        const size = view.getUint32(4, false)
+        if (size > MAX_FRAME_BYTES) {
+          throw new FatalFrameError(`Frame length ${size} exceeds MAX_FRAME_BYTES ${MAX_FRAME_BYTES}`)
+        }
+        // The length is checked before allocating or copying any payload.
+        this.payload = new Uint8Array(size)
+      }
+      const payload = this.payload!
+      const length = Math.min(payload.length - this.payloadBytes, chunk.length - offset)
+      payload.set(chunk.subarray(offset, offset + length), this.payloadBytes)
+      this.payloadBytes += length
+      offset += length
+      if (this.payloadBytes < payload.length) return
+      const frame = { channel: this.channel, payload }
+      this.headerBytes = 0
+      this.payloadBytes = 0
+      this.payload = null
+      receive(frame)
+    }
+  }
+
+  get pendingBytes(): number {
+    return this.headerBytes + this.payloadBytes
   }
 }

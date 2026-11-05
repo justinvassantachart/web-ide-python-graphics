@@ -155,4 +155,32 @@ describe('GraphicsService', () => {
     expect(h.sent).toHaveLength(0)
     expect(h.service.connected).toBe(false)
   })
+  it('rejects unsupported graphics initialization versions', () => {
+    h.send({ op: 'init', id: 1, version: 2 })
+    expect(h.sent[0]).toMatchObject({ id: 1, ok: false, error: { code: 'unsupported' } })
+  })
+
+  it('does not let finite movement overflow a retained coordinate', () => {
+    h.send({ op: 'add', id: 'r', shape: 'rect', x: 1e308, y: 0, w: 1, h: 1 })
+    h.send({ op: 'move', id: 'r', dx: 1e308, dy: 0 })
+    expect(h.service.snapshot().objects[0]).toMatchObject({ x: 1e308 })
+  })
+
+  it('rejects stale timer callbacks even if a scheduler runs them after cancellation', () => {
+    const callbacks: (() => void)[] = []
+    const service = new GraphicsService({ host: { requestRender() {} }, scheduler: {
+      setTimeout(callback) { callbacks.push(callback); return 1 as unknown as ReturnType<typeof setTimeout> },
+      clearTimeout() {},
+    } })
+    const oldReplies: Uint8Array[] = []
+    service.onConnect({ signal: new AbortController().signal, send: payload => oldReplies.push(payload) })
+    service.handleFrame(encodeJson({ op: 'pause', id: 1, ms: 10 }))
+    service.onDisconnect()
+    const newReplies: Uint8Array[] = []
+    service.onConnect({ signal: new AbortController().signal, send: payload => newReplies.push(payload) })
+    callbacks[0]!()
+    expect(oldReplies).toHaveLength(0)
+    expect(newReplies).toHaveLength(0)
+  })
+
 })

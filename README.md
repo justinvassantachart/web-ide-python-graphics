@@ -8,7 +8,7 @@ through Web IDE's **public plugin and runtime APIs only**; it ships no second
 Python interpreter and contains no application code (no auth, AI, persistence,
 branding, or backend).
 
-> Status: v0.1. A separately maintained companion to web-ide (like
+> Status: v0.2. A separately maintained companion to web-ide (like
 > `@web-ide/karel`), consuming only its public plugin and runtime APIs. Not
 > published to a registry; consume it from a packed tarball (see Installation)
 > or a `file:` reference. Verified against web-ide `0.10.0`.
@@ -61,11 +61,11 @@ Not published to a registry. Install from packed tarballs:
 # 1. web-ide: use the release asset for the version you target, e.g.
 #    https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.10.0/web-ide-0.10.0.tgz
 # 2. this package: from a GitHub release asset, or build it yourself:
-npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.1.0.tgz
+npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.2.0.tgz
 
 # 3. In your application:
 npm install /abs/path/web-ide-0.10.0.tgz \
-            /abs/path/web-ide-python-graphics-0.1.0.tgz \
+            /abs/path/web-ide-python-graphics-0.2.0.tgz \
             react react-dom
 ```
 
@@ -96,7 +96,7 @@ while c.is_open():
     c.pause(16)        # host-timed, cancellable
 ```
 
-`graphics` and `graphics.turtle` are reserved module names. A turtle-*style*
+`graphics`, `graphics.turtle`, and `web_ide_transport` are reserved module names. A turtle-*style*
 adapter is available (`from graphics.turtle import Turtle`); it is not the
 standard-library `turtle` and raises a clear error on unsupported calls.
 
@@ -123,6 +123,35 @@ Invalid arguments raise `GraphicsError`; `GraphicsClosed` signals the run ended.
 - **renderer**: `SvgCanvas` (framework-generic).
 - **service + mux**: `GraphicsService`, `DeviceMultiplexer`, `HostService`.
 - **model + protocol**: `Scene`, `encodeFrame`/`FrameReader`, `LIMITS`, etc.
+- **worker boundary validators**: `parseSceneSnapshot`/`isSceneSnapshot` and
+  `parseGraphicsInput`/`isGraphicsInput`, returning detached, bounded safe values.
+
+The separate `@web-ide/python-graphics/transport` export provides
+`DeviceMultiplexer`, `createJsonService`, `ServiceError`, framing helpers, and
+`TRANSPORT_PYTHON_SOURCES` without graphics/React/Web IDE imports. Python
+`get_connection().service(capability, version=1)` owns one lazy shared device
+connection for graphics and independent services. See the exact public API,
+timeout/cancellation rules and 0.1 migration in [INTEGRATION.md](docs/INTEGRATION.md).
+`GraphicsController.reset()` clears a prior run before a new run with disabled
+services, so a non-graphics run cannot show stale output.
+The normal `GRAPHICS_PYTHON_SOURCES` map includes the neutral source; hosts
+composing resources manually should include each path once.
+
+### Actual turtle-style API
+
+`Turtle(canvas=None, width=400, height=400)` supports `forward`/`backward`,
+`goto`, `left`/`right`, `setheading`, `home`, `penup`/`pendown`, `pencolor`,
+`pensize`, `dot`, `write`, `position`, `heading`, `clear`, `is_open`, `pause`,
+and `get_canvas`. Common aliases include `fd`, `bk`/`back`, `lt`, `rt`, `seth`,
+`setpos`/`setposition`, `pu`/`up`, `pd`/`down`, `color`/`pencolour`, `width`, and
+`pos`. `speed` is accepted as a no-op; animation pacing uses `pause`.
+
+The origin is the top-left of the Canvas. The turtle starts at its center;
+heading 0 points right and positive angles turn counterclockwise. `home` moves
+back to the center without changing heading. `color` sets the pen color only;
+there is no separate fill-color state. `clear` clears the entire shared Canvas.
+There is no stdlib `turtle` import, fill, stamp, clone, turtle shape, tracer,
+undo, or image API. Unsupported listed operations raise `GraphicsError`.
 
 ## Security
 
@@ -130,6 +159,8 @@ Colors are a strict allow-list (`#hex`, numeric `rgb()/rgba()`, named colors) â€
 no `url()`, CSS functions, or custom properties. Text renders as SVG text
 content, never HTML. All guest input is bounded and re-validated on the host
 (finite numbers, object/point/text/canvas limits, no prototype pollution).
+Aggregate retained geometry is capped at 100000 polyline/polygon vertices and
+text at 1048576 UTF-16 units, independently of per-object limits.
 Keyboard capture is scoped to the focused canvas; there is no document-wide
 capture or mutable global canvas. There is no image API in v1.
 

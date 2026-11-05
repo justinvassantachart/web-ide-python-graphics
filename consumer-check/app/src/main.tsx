@@ -9,13 +9,8 @@ import {
 } from 'web-ide'
 import { pythonRuntimePlugin } from 'web-ide/runtimes'
 import { coreWorkbenchPlugin } from 'web-ide/plugins'
-import {
-  createPythonGraphicsPlugin,
-  decodeJsonObject,
-  encodeJson,
-  type HostService,
-  type ServiceConnection,
-} from '@web-ide/python-graphics'
+import { createPythonGraphicsPlugin } from '@web-ide/python-graphics'
+import { createJsonService } from '@web-ide/python-graphics/transport'
 import 'web-ide/styles.css'
 import { PROGRAMS, type ProgramKey } from './programs'
 
@@ -28,27 +23,11 @@ const withMulti = params.get('service') === 'multi'
 const twoInstances = params.get('instances') === '2'
 const panelPercent = Number(params.get('panel') ?? 55)
 
-// A mock independent service sharing the single device on channel 2.
-class ClockService implements HostService {
-  readonly channel = 2
-  readonly capability = 'clock'
-  readonly version = 1
-  private connection: ServiceConnection | null = null
-  onConnect(connection: ServiceConnection) { this.connection = connection }
-  handleFrame(payload: Uint8Array) {
-    const message = decodeJsonObject(payload)
-    if (typeof message.id === 'number') {
-      this.connection?.send(encodeJson({ id: message.id, ok: true, result: { now: 1234 } }))
-    }
-  }
-  onDisconnect() { this.connection = null }
-}
-
 function buildConfig(): WebIDEConfiguration {
   const plugins: IDEPlugin[] = [pythonRuntimePlugin, coreWorkbenchPlugin]
   if (withGraphics) {
     plugins.push(createPythonGraphicsPlugin(
-      withMulti ? { createAdditionalServices: () => [new ClockService()] } : {},
+      withMulti ? { createAdditionalServices: () => [createJsonService({ channel: 2, capability: 'echo', version: 1, handleRequest: message => ({ echo: message.value }) })] } : {},
     ))
   }
   return {
