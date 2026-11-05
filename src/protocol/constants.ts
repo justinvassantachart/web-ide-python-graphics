@@ -6,17 +6,8 @@
  * helper (`src/python/graphics/__init__.py`) in lockstep.
  */
 
-/** First header byte; a cheap desync sentinel, not a resync marker. */
-export const FRAME_MAGIC = 0xc7
-
-/** Transport/multiplexer framing version. */
-export const TRANSPORT_VERSION = 1
-
-/** 8-byte frame header: MAGIC(1) VERSION(1) CHANNEL(u16) LENGTH(u32). */
-export const FRAME_HEADER_BYTES = 8
-
-/** Reserved multiplexer control channel (hello/welcome/error). */
-export const CHANNEL_CONTROL = 0
+import { MAX_FRAME_BYTES } from '../transport/constants'
+export { FRAME_MAGIC, TRANSPORT_VERSION, FRAME_HEADER_BYTES, CHANNEL_CONTROL } from '../transport/constants'
 
 /** Default graphics-service channel. */
 export const CHANNEL_GRAPHICS = 1
@@ -33,11 +24,15 @@ export const GRAPHICS_VERSION = 1
  */
 export const LIMITS = {
   /** Max payload bytes in one frame (header excluded). Bounds reader buffers. */
-  MAX_FRAME_BYTES: 262_144,
+  MAX_FRAME_BYTES,
   /** Max retained objects in a scene. */
   MAX_OBJECTS: 10_000,
   /** Max points in a polyline/polygon. */
   MAX_POINTS: 10_000,
+  /** Aggregate retained polyline/polygon vertices across the entire scene. */
+  MAX_SCENE_POINTS: 100_000,
+  /** Aggregate retained text size in UTF-16 units across the entire scene. */
+  MAX_SCENE_TEXT_LEN: 1_048_576,
   /** Max characters in a text object. */
   MAX_TEXT_LEN: 4_096,
   /** Max canvas width/height in logical units. */

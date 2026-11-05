@@ -35,7 +35,10 @@ export default defineConfig({
   build: {
     target: 'esnext',
     lib: {
-      entry: { index: path.resolve(import.meta.dirname, 'src/index.ts') },
+      entry: {
+        index: path.resolve(import.meta.dirname, 'src/index.ts'),
+        transport: path.resolve(import.meta.dirname, 'src/transport/index.ts'),
+      },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.js`,
     },

@@ -1,0 +1,11 @@
+/** Neutral transport entry: no graphics, React, Web IDE, auth or provider imports. */
+export { DeviceMultiplexer } from '../mux/multiplexer'
+export type { DeviceMultiplexerOptions } from '../mux/multiplexer'
+export type { HostByteDevice, HostService, ServiceConnection, ServiceRequest } from '../mux/service'
+export { createJsonService, ServiceError } from './json-service'
+export type { JsonServiceOptions } from './json-service'
+export { TRANSPORT_PYTHON_SOURCES, TRANSPORT_PY_PATH } from './resources'
+export { FRAME_MAGIC, TRANSPORT_VERSION, FRAME_HEADER_BYTES, CHANNEL_CONTROL, MAX_FRAME_BYTES } from './constants'
+export { encodeFrame, FrameReader, FatalFrameError } from '../protocol/frames'
+export type { Frame } from '../protocol/frames'
+export { encodeJson, decodeJsonObject, ProtocolError } from '../protocol/codec'

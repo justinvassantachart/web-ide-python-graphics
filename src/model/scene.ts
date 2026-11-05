@@ -6,7 +6,9 @@
  * compute (they need the DOM), so {@link geometricBounds} returns null for text.
  */
 
-import type { Bounds, Point, TextAnchor } from './geometry'
+import { finiteNumber, type Bounds, type Point, type TextAnchor } from './geometry'
+import { LIMITS } from '../protocol/constants'
+import { ProtocolError } from '../protocol/codec'
 
 export interface Style {
   readonly fill: string // 'none' or a validated safe color
@@ -76,14 +78,14 @@ export function objectReferencePoint(object: SceneObject): Point {
 export function translateObject(object: SceneObject, dx: number, dy: number): SceneObject {
   switch (object.kind) {
     case 'line':
-      return { ...object, x1: object.x1 + dx, y1: object.y1 + dy, x2: object.x2 + dx, y2: object.y2 + dy }
+      return { ...object, x1: finiteNumber(object.x1 + dx, 'translated x1'), y1: finiteNumber(object.y1 + dy, 'translated y1'), x2: finiteNumber(object.x2 + dx, 'translated x2'), y2: finiteNumber(object.y2 + dy, 'translated y2') }
     case 'rect':
     case 'oval':
     case 'text':
-      return { ...object, x: object.x + dx, y: object.y + dy }
+      return { ...object, x: finiteNumber(object.x + dx, 'translated x'), y: finiteNumber(object.y + dy, 'translated y') }
     case 'polyline':
     case 'polygon':
-      return { ...object, points: object.points.map(([px, py]) => [px + dx, py + dy] as Point) }
+      return { ...object, points: object.points.map(([px, py]) => [finiteNumber(px + dx, 'translated x'), finiteNumber(py + dy, 'translated y')] as Point) }
   }
 }
 
@@ -125,6 +127,8 @@ export class Scene {
   private readonly order: SceneObject[] = []
   private readonly index = new Map<string, number>()
   private _version = 0
+  private pointCount = 0
+  private textLength = 0
 
   get version(): number {
     return this._version
@@ -155,6 +159,8 @@ export class Scene {
     this._canvas = canvas
     this.order.length = 0
     this.index.clear()
+    this.pointCount = 0
+    this.textLength = 0
     this._version++
   }
 
@@ -162,19 +168,35 @@ export class Scene {
     if (this.order.length === 0) return
     this.order.length = 0
     this.index.clear()
+    this.pointCount = 0
+    this.textLength = 0
     this._version++
   }
 
   add(object: SceneObject): void {
+    this.adjustBudget(object)
     this.index.set(object.id, this.order.length)
     this.order.push(object)
     this._version++
+  }
+
+  private adjustBudget(next?: SceneObject, previous?: SceneObject): void {
+    const points = (object?: SceneObject) => object?.kind === 'polyline' || object?.kind === 'polygon' ? object.points.length : 0
+    const text = (object?: SceneObject) => object?.kind === 'text' ? object.text.length : 0
+    const nextPoints = this.pointCount + points(next) - points(previous)
+    const nextText = this.textLength + text(next) - text(previous)
+    if (nextPoints > LIMITS.MAX_SCENE_POINTS || nextText > LIMITS.MAX_SCENE_TEXT_LEN) {
+      throw new ProtocolError('limit_exceeded', 'Scene aggregate geometry or text limit exceeded')
+    }
+    this.pointCount = nextPoints
+    this.textLength = nextText
   }
 
   /** Replaces an existing object in place (same z-position). */
   replace(object: SceneObject): void {
     const position = this.index.get(object.id)
     if (position === undefined) return
+    this.adjustBudget(object, this.order[position])
     this.order[position] = object
     this._version++
   }
@@ -182,6 +204,7 @@ export class Scene {
   remove(id: string): void {
     const position = this.index.get(id)
     if (position === undefined) return
+    this.adjustBudget(undefined, this.order[position])
     this.order.splice(position, 1)
     this.index.delete(id)
     this.reindexFrom(position)

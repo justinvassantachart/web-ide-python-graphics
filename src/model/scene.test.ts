@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { LIMITS } from '../protocol/constants'
 import {
   geometricBounds,
   objectReferencePoint,
@@ -73,6 +74,34 @@ describe('Scene', () => {
     expect(scene.getById('__proto__')?.id).toBe('__proto__')
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
     expect(Object.prototype).not.toHaveProperty('polluted')
+  })
+})
+
+describe('aggregate scene budgets', () => {
+  const poly = (id: string, count: number): SceneObject => ({ id, kind: 'polyline', visible: true, style, points: Array.from({ length: count }, () => [0, 0]) })
+  const label = (id: string, count: number): SceneObject => ({ id, kind: 'text', visible: true, style, x: 0, y: 0, text: 'x'.repeat(count), anchor: 'nw', fontSize: 12, fontFamily: 'serif' })
+
+  it('rejects adds and updates atomically, frees removed geometry, and resets counts', () => {
+    const scene = new Scene()
+    for (let i = 0; i < 10; i++) scene.add(poly(`p${i}`, LIMITS.MAX_POINTS))
+    const before = scene.snapshot()
+    expect(() => scene.add(poly('overflow', 1))).toThrow(/aggregate/)
+    expect(scene.snapshot()).toEqual(before)
+    scene.remove('p0')
+    scene.add(poly('replacement', LIMITS.MAX_POINTS))
+    expect(() => scene.replace(poly('replacement', LIMITS.MAX_POINTS + 1))).toThrow(/aggregate/)
+    scene.clearObjects()
+    scene.add(poly('fresh', LIMITS.MAX_POINTS))
+    expect(scene.size).toBe(1)
+  })
+
+  it('bounds aggregate text independently and permits shrinking/reuse', () => {
+    const scene = new Scene()
+    for (let i = 0; i < 256; i++) scene.add(label(`t${i}`, LIMITS.MAX_TEXT_LEN))
+    expect(() => scene.add(label('overflow', 1))).toThrow(/aggregate/)
+    scene.replace(label('t0', 0))
+    scene.add(label('replacement', LIMITS.MAX_TEXT_LEN))
+    expect(scene.size).toBe(257)
   })
 })
 

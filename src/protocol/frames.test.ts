@@ -74,4 +74,18 @@ describe('frame codec', () => {
   it('refuses to encode an oversize payload', () => {
     expect(() => encodeFrame(1, new Uint8Array(LIMITS.MAX_FRAME_BYTES + 1))).toThrow(/MAX_FRAME_BYTES/)
   })
+  it('streams a large input chunk without retaining a decoded frame queue', () => {
+    const bytes = concat(Array.from({ length: 1000 }, () => encodeFrame(2, new Uint8Array(1024))))
+    const reader = new FrameReader()
+    let count = 0
+    reader.consume(bytes, frame => { expect(frame.payload.length).toBe(1024); count++ })
+    expect(count).toBe(1000)
+    expect(reader.pendingBytes).toBe(0)
+  })
+
+  it('handles empty frames without swallowing the next header', () => {
+    const reader = new FrameReader()
+    expect(reader.push(concat([encodeFrame(1, new Uint8Array()), encodeFrame(2, new Uint8Array([1]))])).map(f => f.channel)).toEqual([1, 2])
+  })
+
 })

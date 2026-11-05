@@ -19,11 +19,14 @@ on the shared byte device. Design rationale lives in `DESIGN.md`.
    same discipline. This makes the blocking duplex stream deadlock-free.
 2. **Input is pulled, not pushed.** DOM input accrues in a bounded host FIFO and
    is delivered only inside a `poll_event`/`wait_event` response.
-3. **Fatal vs recoverable.** Bad `MAGIC`, unknown `VERSION`, or
-   `LENGTH > MAX_FRAME_BYTES` are fatal (the run's device is torn down —
-   per-run, per-instance). Unknown channel, empty payload, bad JSON, or any
-   service validation failure is recoverable (a control `error` frame; the
-   device and other services survive).
+3. **Fatal vs recoverable.** Bad frame magic/version/length, malformed JSON,
+   overlapping requests, failed host writes, and an overflowing write queue stop
+   the connection. The mux unsubscribes, aborts every request/service signal, and
+   disconnects each service exactly once. Its `onFatal` callback MUST stop the
+   owning runtime: the public `RuntimeHostDevice` has no close method. The
+   built-in plugin supplies `onFatal: () => session.stop()`. A well-formed
+   request to an unknown channel gets a control error; a service request failure
+   gets a correlated error and leaves independent services usable.
 4. **Both sides validate.** The host trusts no guest JSON: object ids are opaque
    `Map` keys (no prototype pollution), each op copies a fixed field allow-list
    (guest keys are never spread onto host objects), every number is re-checked
@@ -40,7 +43,7 @@ offset size field
 1      1    VERSION = 0x01
 2      2    CHANNEL (uint16, big-endian)
 4      4    LENGTH  (uint32, big-endian) = payload byte length
-8      LEN  PAYLOAD (UTF-8 JSON for channels 0 and 1)
+8      LEN  PAYLOAD (UTF-8 JSON object on every channel)
 ```
 
 `LENGTH` MUST be ≤ `MAX_FRAME_BYTES` (262144). The reader validates the 8-byte
@@ -54,11 +57,32 @@ reader accumulates until `8 + LENGTH` bytes are present.
 | ------- | ----------------------- |
 | 0       | multiplexer control     |
 | 1       | graphics service        |
-| 2..255  | host-injected services  |
+| 2..65535 | host-injected services |
 
 Control (channel 0), JSON: guest→host `{"t":"hello","mux":1}`; host→guest
 `{"t":"welcome","mux":1,"services":[{"channel":1,"capability":"graphics","version":1}, …]}`;
 host→guest `{"t":"error","code":"…","message":"…"}`.
+
+The host validates `hello.mux === 1` before dispatching any service frame and
+accepts only one hello per run. Both sides reject duplicate channel or capability
+ownership and invalid versions. Guests discover channels by capability; graphics
+uses channel 1 by default but a host may assign another advertised channel.
+
+All JSON service requests carry numeric `id` values, increasing globally from 1
+through 4294967295, shared across **all** services. IDs never wrap or repeat in a
+run. Commands have no `id` or a string object id, and never receive responses.
+Responses must match both the owning channel and the pending ID and include a
+boolean `ok`. Stale, duplicate, wrong-channel, and unsolicited responses are
+ignored. A second guest frame while a request is pending is a fatal protocol
+violation, preventing duplex-device deadlocks.
+
+The default request deadline is 65000 ms; hosts can set `requestTimeoutMs` from
+1 through 300000. Expiry returns `{ok:false,error:{code:"timeout",message:...}}`,
+aborts the request's signal, and frees the global slot. A handler must honor
+that signal for its own external work; late responses are rejected even when it
+does not. `createJsonService` exposes only explicit `ServiceError(code,message)`
+messages; unexpected exceptions return a generic `internal` error. The outgoing
+write queue is capped at 64 frames and all writes are awaited serially.
 
 ## 2. Graphics service (channel 1, JSON, v1)
 
@@ -96,6 +120,12 @@ Error codes: `bad_request`, `unknown_object`, `duplicate_object`,
 | MAX_POINTS       | 10000  | MAX_PAUSE_MS      | 60000 |
 | MAX_EVENT_QUEUE  | 512    | MAX_PARKED_REQS   | 1     |
 | MAX_FONT_SIZE    | 512    | MAX_STROKE_WIDTH  | 512   |
+
+Aggregate scene limits are `MAX_SCENE_POINTS = 100000` polyline/polygon vertices
+and `MAX_SCENE_TEXT_LEN = 1048576` UTF-16 units. Add/update budget failures leave
+the original scene untouched. Delete/clear frees the budget. Both the Python
+API and host model enforce these limits; worker snapshot validators independently
+check them before accepting cross-thread data.
 
 Text length is measured in UTF-16 code units (the Python client counts the same
 so astral characters cannot slip past it).
@@ -163,37 +193,74 @@ wait_event resp    ch1  {"id":3,"ok":true,"result":{"event":{"kind":"mouseclick"
 header is the authoritative part. Regenerate full vectors from the package
 exports with `encodeFrame`/`encodeJson`.)
 
-## 4. Handoff for an additional service (consumer agreement)
+## 4. Public neutral transport API and migration from 0.1
 
-A host composing a second service over the one device agrees:
+`@web-ide/python-graphics/transport` is a separate framework-free entry point in
+the exact same 0.2 archive. Its dependency graph contains framing, JSON routing,
+and the neutral Python source only: no graphics implementation, React, Web IDE,
+AI provider, credentials, or host policy. Keeping it in one archive makes the
+host and guest transport inseparable at release/integrity verification time.
 
-- It claims a channel `≥ 2` (graphics is always 1, control is 0). Channel
-  assignment is static per composition and agreed with that service's own guest
-  client out of band.
-- It owns the framing of its channel's payloads (the multiplexer only frames and
-  routes; it does not interpret non-graphics payloads).
-- It obeys the response-only, single-outstanding discipline (invariant §0.1) —
-  no unsolicited host→guest writes.
-- All writes across channels are serialized by the multiplexer; a transport
-  framing error (invariant §0.3) tears down the shared device for that run.
+```ts
+import {
+  DeviceMultiplexer, createJsonService, ServiceError,
+  TRANSPORT_PYTHON_SOURCES,
+} from '@web-ide/python-graphics/transport'
 
-The multiplexer frames and routes **opaque** payloads; it does not parse a
-second service's messages and so cannot enforce that service's response-only /
-single-outstanding discipline. The outbound backlog cap (64 queued frames) is
-the backstop that bounds the damage a misbehaving service can do to the shared
-blocking stream; honoring §0.1 is the injected service's responsibility under
-this contract.
+const echo = createJsonService({
+  channel: 2, capability: 'echo', version: 1,
+  async handleRequest(message, { signal }) {
+    if (signal.aborted) throw new ServiceError('cancelled', 'Request cancelled')
+    if (message.op !== 'echo') throw new ServiceError('unsupported', 'Unknown operation')
+    return { value: message.value }
+  },
+})
+const transport = new DeviceMultiplexer({
+  services: [echo], // no graphics required; optionally add graphicsController.hostService
+  onFatal: () => session.stop(),
+})
+const registration = session.registerHostDevice(transport.opener)
+// Contribute TRANSPORT_PYTHON_SOURCES as execution-only resources.
+// Dispose registration when the owning IDE mount goes away.
+```
 
-Composition entry points:
-`createPythonGraphicsPlugin({ createAdditionalServices })` for the Web IDE
-plugin, or construct a `DeviceMultiplexer({ services: [graphicsService, …] })`
-yourself and pass `multiplexer.opener` to `RuntimeSession.registerHostDevice`.
+```python
+from web_ide_transport import get_connection, TransportError
+service = get_connection().service("echo", version=1)
+result = service.request("echo", value="hello")
+service.close()  # only this facade; other services retain the shared connection
+```
+
+The Python singleton lazily opens one descriptor, performs one handshake, and
+owns partial I/O, bounded reads, correlation and global request IDs. Importing
+it opens nothing. `TransportError(message, code=None)` preserves host codes,
+including uppercase application codes; `TransportClosed` has `code="closed"`.
+Closing a Canvas closes its graphics client, not the connection used by AI.
+Graphics uses this public API and no longer owns or exposes private device I/O.
+For public-player worker boundaries, the graphics entry exports strict bounded
+`parseSceneSnapshot`/`isSceneSnapshot` and `parseGraphicsInput`/`isGraphicsInput`.
+
+0.2 preserves the documented Python graphics API, frame version 1, graphics
+service version 1, and existing root exports. It formalizes the **JSON** service
+profile and enforces the previously documented global single-request rule.
+Custom 0.1 consumers must replace private `Canvas._conn._send/_read_json` access
+with public service clients, use globally increasing numeric request IDs,
+complete the hello handshake before service frames, and provide `onFatal` when
+composing the mux manually. Opaque non-JSON injected payloads are no longer a
+supported service profile. Existing raw `HostService` implementations remain
+usable when they follow the JSON profile; new services should use
+`createJsonService` to receive request-scoped cancellation and safe error mapping.
+
+`get_event(None)` preserves its blocking behavior by repeating bounded 60000 ms
+requests. Input remains pull-only. No streaming or unsolicited host push is
+supported; applications that need progress must design bounded polling.
 
 ## 5. Web IDE integration specifics
 
 - The Python helper ships as an **execution-only** resource package at guest
-  `/graphics/__init__.py` (+ `/graphics/turtle.py`). `graphics` and
-  `graphics.turtle` are **reserved module names**; a workspace file named
+  `/graphics/__init__.py` (+ `/graphics/turtle.py`) and
+  `/web_ide_transport/__init__.py`. `graphics`, `graphics.turtle`, and
+  `web_ide_transport` are **reserved module names**; a workspace file named
   `graphics.py` is shadowed by the package (it does not break the run).
 - The plugin registers one host-device opener in `activate` while the session is
   idle, bridges the per-run controller to the panel through a session-keyed

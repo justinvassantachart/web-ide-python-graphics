@@ -27,7 +27,7 @@ import {
 } from '../model/scene'
 import { applyUpdate, buildObject } from './build'
 import { isCoalescible, type GraphicsInput } from './events'
-import type { HostService, ServiceConnection } from '../mux/service'
+import type { HostService, ServiceConnection, ServiceRequest } from '../mux/service'
 
 type TimerHandle = ReturnType<typeof setTimeout>
 
@@ -66,6 +66,7 @@ interface Parked {
   kind: 'event' | 'pause'
   id: number
   timer: TimerHandle | null
+  detachAbort?: () => void
 }
 
 export class GraphicsService implements HostService {
@@ -100,11 +101,16 @@ export class GraphicsService implements HostService {
 
   onConnect(connection: ServiceConnection): void {
     this.connection = connection
+    this.reset()
+    this.host.onConnected?.()
+  }
+
+  /** Clear a previous run's scene without opening a device or using graphics. */
+  reset(): void {
     this.clearParked()
     this.queue.length = 0
     this.touched = false
     this.scene.setCanvas(DEFAULT_CANVAS)
-    this.host.onConnected?.()
     this.host.requestRender()
   }
 
@@ -142,7 +148,8 @@ export class GraphicsService implements HostService {
 
   // ---- Frame handling --------------------------------------------------------
 
-  handleFrame(payload: Uint8Array): void {
+  handleFrame(payload: Uint8Array, request?: ServiceRequest): void {
+    if (request?.signal.aborted) return
     let message: Record<string, unknown>
     try {
       message = decodeJsonObject(payload)
@@ -156,13 +163,15 @@ export class GraphicsService implements HostService {
     // request and the object id on a command, so dispatch by op, never by the
     // presence of an `id` field.
     if (typeof message.op === 'string' && REQUEST_OPS.has(message.op)) {
-      this.handleRequest(message)
+      this.handleRequest(message, request)
+    } else if (typeof message.id === 'number') {
+      this.respond(message.id, false, undefined, ERROR_CODES.BAD_REQUEST, 'Unknown graphics request')
     } else {
       this.handleCommand(message)
     }
   }
 
-  private handleRequest(message: Record<string, unknown>): void {
+  private handleRequest(message: Record<string, unknown>, request?: ServiceRequest): void {
     const id = message.id
     if (typeof id !== 'number' || !Number.isInteger(id) || id < 0 || id > 0xffffffff) {
       return // unaddressable; drop
@@ -175,6 +184,7 @@ export class GraphicsService implements HostService {
     try {
       switch (op) {
         case 'init':
+          if (message.version !== GRAPHICS_VERSION) throw new ProtocolError(ERROR_CODES.UNSUPPORTED, 'Unsupported graphics service version')
           this.respond(id, true, { service: GRAPHICS_CAPABILITY, version: GRAPHICS_VERSION, limits: publicLimits() })
           return
         case 'metrics': {
@@ -194,8 +204,10 @@ export class GraphicsService implements HostService {
           // fire the callback before the slot is set and wedge the gate.
           const parked: Parked = { kind: 'pause', id, timer: null }
           this.parked = parked
+          this.bindRequest(parked, request)
           parked.timer = this.scheduler.setTimeout(() => {
-            if (this.parked === parked) this.parked = null
+            if (this.parked !== parked) return
+            this.clearParked()
             this.respond(id, true, {})
           }, ms)
           return
@@ -213,9 +225,11 @@ export class GraphicsService implements HostService {
             : clamp(finiteNumber(message.timeout_ms, 'timeout_ms'), 0, LIMITS.MAX_PAUSE_MS)
           const parked: Parked = { kind: 'event', id, timer: null }
           this.parked = parked
+          this.bindRequest(parked, request)
           if (timeout !== undefined) {
             parked.timer = this.scheduler.setTimeout(() => {
-              if (this.parked === parked) this.parked = null
+              if (this.parked !== parked) return
+              this.clearParked()
               this.respond(id, true, { event: null })
             }, timeout)
           }
@@ -323,7 +337,15 @@ export class GraphicsService implements HostService {
     this.connection.send(encodeJson(body))
   }
 
+  private bindRequest(parked: Parked, request?: ServiceRequest): void {
+    if (!request) return
+    const abort = () => { if (this.parked === parked) this.clearParked() }
+    request.signal.addEventListener('abort', abort, { once: true })
+    parked.detachAbort = () => request.signal.removeEventListener('abort', abort)
+  }
+
   private clearParked(): void {
+    this.parked?.detachAbort?.()
     if (this.parked?.timer != null) this.scheduler.clearTimeout(this.parked.timer)
     this.parked = null
   }
@@ -333,6 +355,8 @@ function publicLimits() {
   return {
     maxObjects: LIMITS.MAX_OBJECTS,
     maxPoints: LIMITS.MAX_POINTS,
+    maxScenePoints: LIMITS.MAX_SCENE_POINTS,
+    maxSceneTextLen: LIMITS.MAX_SCENE_TEXT_LEN,
     maxTextLen: LIMITS.MAX_TEXT_LEN,
     maxCanvasDim: LIMITS.MAX_CANVAS_DIM,
     maxPauseMs: LIMITS.MAX_PAUSE_MS,

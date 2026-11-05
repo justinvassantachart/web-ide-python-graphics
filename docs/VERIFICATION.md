@@ -1,3 +1,65 @@
+# 0.2 neutral transport verification (2026-11-04)
+
+The 0.2 validation path includes TypeScript tests for framing, global request
+ownership, throwing services, deadlines, cancellation, stale callbacks and
+teardown; CPython tests for shared descriptor/handshake/IDs, partial I/O, strict
+response validation, graphics/independent-service ordering, Canvas closure and
+aggregate budgets; and a real CPython process exchanging partial byte chunks
+with the built TypeScript neutral transport and two independent services. The
+last check asserts that the guest never imports graphics.
+
+`npm run validate` passes lint, typecheck, 88 TypeScript tests, 12 CPython tests,
+the library build, and the real TypeScript/CPython transport check.
+`WEB_IDE_TARBALL=... npm run check:consumer` installs exact archives into a clean
+application and checks bundler/NodeNext declarations and a production build.
+`GraphicsController.reset()` and strict cross-worker snapshot/input parsers have
+focused regressions. The 0.2 consumer `multi` program uses public capability
+clients before and after Canvas creation and after Canvas.close; private
+`Canvas._conn` access has been removed.
+
+## Fresh 0.2 packed-consumer browser matrix
+
+Chromium **151.0.7922.34**, Playwright, macOS, viewport 1400×900 plus 760×640.
+The clean production consumer installed the exact 0.2 archive (SHA-256
+`df08565fce6bfabe740c17949ddaf644cacd6a7a1b22931f667004fa91add4d1`)
+and released Web IDE 0.10.0. Vite preview on localhost:4310 supplied COOP/COEP;
+`crossOriginIsolated` was asserted for every scenario. Programs executed through
+the real stock Python WASM runtime; no source aliases or mocked guest messages.
+
+| Scenario | Result |
+| --- | --- |
+| Shapes, text, z-order, execution-only resources hidden | PASS: 8 objects, correct back-layer rectangle and text |
+| Mutation, live measured bounds, visibility, deletion | PASS: moved coordinates, text, recolor and deleted-handle errors |
+| Independent service before/after graphics and after Canvas.close | PASS: all 3 public-client replies, one graphics text object, exit 0 |
+| Scaled pointer coordinates and keyboard focus | PASS: 760×640 viewport maps to click (100,80); `a`, ArrowLeft, `q` delivered while focused |
+| Animation, Stop, frozen frame, rerun, panel switching | PASS: moving ball; frozen after Stop; one ball after rerun; Variables/Graphics switching preserves state |
+| Python error recovery and unsafe paint rejection | PASS: unsafe colors/invalid style rejected; traceback exit 1 retains valid object |
+| Turtle adapter | PASS: 120 rebeccapurple line segments, exit 0 |
+| Neither service; host without graphics | PASS: no blank canvas; plain host imports fail cleanly while Python continues |
+| Two simultaneous IDE instances | PASS: independent 8-object scene and one animating ball |
+| Tiny/tall/4096² canvases, narrow panel, light theme, opacity | PASS: fit within viewport; eight objects retain opacity 0.4 |
+| Debug entry, step over, continue | PASS: debugger pauses/steps; continuation produces 8 objects, exit 0 |
+| Paint drag and keyboard color switch | PASS: crimson segments follow drag; Stop completes |
+
+All **12 scenarios passed**, with **zero page errors or console errors**. Two
+initial harness assertions used HTMLElement.innerText on SVG; changing those
+assertions to textContent and rerunning only those two cases resolved them.
+No product change was needed for that harness correction. External evidence is
+`/tmp/graphics-transport-artifacts/browser-report-final.json`, the sibling
+`browser-*.png` screenshots, and `/tmp/graphics-consumer-browser-qa.mjs`. The
+consumer remains at `/tmp/graphics-transport-final-consumer/app` for replay.
+
+The default plugin also has focused lifecycle regressions for deactivation
+while a guest waits for input, fresh-controller reactivation, and idle teardown.
+Manual mux compositions must supply the required `onFatal` stop callback.
+
+This package-local work does not claim deployed THS verification. THS must
+verify its own editor/public-player integration, live authorization and production
+asset hosting. Safari/WebKit and Firefox were not exercised in this package
+matrix. The older records below remain **0.1 historical evidence**.
+
+---
+
 # Verification record — @web-ide/python-graphics
 
 Scope of this run and exactly what was and was not verified, per the repository's
