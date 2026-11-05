@@ -1,3 +1,39 @@
+# 0.2.1 worker entry verification (2026-11-05)
+
+The production public-player build demonstrated that importing headless names
+from the root UI entry can retain React CommonJS initialization in a worker.
+Version 0.2.1 adds `@web-ide/python-graphics/core` and separates its source-map
+and measurement-type dependencies from UI declarations. Graphics behavior and
+the transport/Python contracts are unchanged; the 0.2.0 release is immutable.
+
+`npm run validate` passed lint, typecheck, all **88 TypeScript tests**, all
+**12 CPython tests**, the library build and the real neutral transport check.
+The added `check:worker` compiles actual Vite module workers retaining all
+exports from `/core` and `/transport`, rejecting retained React, DOM and editor
+code. Its root-UI negative control fails as required.
+
+A fresh clean consumer installed the exact 0.2.1 archive (SHA-256
+`36748f2cd003ec4efb561ad3e1c23341382bf3349fd0e1ff143f156303925a88`)
+and released Web IDE 0.10.0. Both bundler and strict NodeNext declarations passed,
+and the production application compiled a 54.85 kB module worker using the
+public `/core` controller, source map, validators and types. The same retained
+module/code guard passed for that packed consumer.
+
+The built consumer was served with COOP/COEP on localhost:4310 and exercised in
+Chromium **151.0.7922.34**. An actual worker created/reset a controller, parsed
+its snapshot and keyboard input, returned status and the three Python resource
+paths, and terminated successfully. The main-thread UI then executed the real
+Python shapes program and rendered all eight objects and text. Both checks
+passed with **zero page or console errors**. This focused browser check covers
+the packaging change; the full graphics matrix below was not repeated for
+0.2.1. Evidence is retained outside the repository at
+`/tmp/graphics-transport-artifacts/browser-worker-core-0.2.1.json`, the matching
+screenshot, `/tmp/graphics-worker-core-browser-qa.mjs`, and the clean consumer
+at `/tmp/graphics-worker-core-consumer/app`. Downstream THS production isolation
+and deployment validation remain the consuming application's responsibility.
+
+---
+
 # 0.2 neutral transport verification (2026-11-04)
 
 The 0.2 validation path includes TypeScript tests for framing, global request

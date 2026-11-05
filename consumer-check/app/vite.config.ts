@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import wasm from 'vite-plugin-wasm'
+import { assertHeadlessGraphicsWorker } from './worker-boundary.mjs'
 
 // The runtime needs cross-origin isolation (SharedArrayBuffer). Vite's native
 // header options apply to both `vite dev` and `vite preview`.
@@ -20,7 +21,7 @@ export default defineConfig({
     },
     dedupe: ['react', 'react-dom'],
   },
-  worker: { format: 'es', plugins: () => [wasm()] },
+  worker: { format: 'es', plugins: () => [wasm(), assertHeadlessGraphicsWorker()] },
   optimizeDeps: { exclude: ['debugger-sh'] },
   build: { target: 'esnext' },
 })

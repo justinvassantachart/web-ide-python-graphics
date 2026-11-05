@@ -18,6 +18,11 @@ import { PROGRAMS, type ProgramKey } from './programs'
 // service=multi, instances=2, panel=<15..57>, theme=dark|light (index.html).
 const params = new URLSearchParams(window.location.search)
 const program = (params.get('program') ?? 'shapes') as ProgramKey
+if (params.has('worker')) {
+  const worker = new Worker(new URL('./graphics-worker.ts', import.meta.url), { type: 'module' })
+  worker.onmessage = () => worker.terminate()
+  worker.postMessage('check')
+}
 const withGraphics = params.get('host') !== 'plain'
 const withMulti = params.get('service') === 'multi'
 const twoInstances = params.get('instances') === '2'

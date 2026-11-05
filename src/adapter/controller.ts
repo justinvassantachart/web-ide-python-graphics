@@ -14,7 +14,7 @@ import {
 } from '../service/graphics-service'
 import type { GraphicsInput } from '../service/events'
 import type { HostService } from '../mux/service'
-import type { MeasureFn } from '../renderer/SvgCanvas'
+import type { MeasureFn } from '../model/measure'
 
 /**
  * What the panel should show. `phase` tracks the run's device; `drew` is true

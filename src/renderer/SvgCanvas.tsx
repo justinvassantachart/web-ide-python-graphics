@@ -7,12 +7,11 @@
 
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { anchoredBox, type Bounds, type TextAnchor } from '../model/geometry'
+import { anchoredBox, type TextAnchor } from '../model/geometry'
 import type { SceneObject, SceneSnapshot } from '../model/scene'
 import type { GraphicsInput } from '../service/events'
-
-export type TextObject = SceneObject & { kind: 'text' }
-export type MeasureFn = (object: TextObject) => Bounds | null
+import type { MeasureFn } from '../model/measure'
+export type { MeasureFn, TextObject } from '../model/measure'
 
 export interface SvgCanvasProps {
   snapshot: SceneSnapshot

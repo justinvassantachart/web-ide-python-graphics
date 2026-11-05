@@ -8,7 +8,7 @@ through Web IDE's **public plugin and runtime APIs only**; it ships no second
 Python interpreter and contains no application code (no auth, AI, persistence,
 branding, or backend).
 
-> Status: v0.2. A separately maintained companion to web-ide (like
+> Status: v0.2.1. A separately maintained companion to web-ide (like
 > `@web-ide/karel`), consuming only its public plugin and runtime APIs. Not
 > published to a registry; consume it from a packed tarball (see Installation)
 > or a `file:` reference. Verified against web-ide `0.10.0`.
@@ -61,11 +61,11 @@ Not published to a registry. Install from packed tarballs:
 # 1. web-ide: use the release asset for the version you target, e.g.
 #    https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.10.0/web-ide-0.10.0.tgz
 # 2. this package: from a GitHub release asset, or build it yourself:
-npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.2.0.tgz
+npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.2.1.tgz
 
 # 3. In your application:
 npm install /abs/path/web-ide-0.10.0.tgz \
-            /abs/path/web-ide-python-graphics-0.2.0.tgz \
+            /abs/path/web-ide-python-graphics-0.2.1.tgz \
             react react-dom
 ```
 
@@ -125,6 +125,16 @@ Invalid arguments raise `GraphicsError`; `GraphicsClosed` signals the run ended.
 - **model + protocol**: `Scene`, `encodeFrame`/`FrameReader`, `LIMITS`, etc.
 - **worker boundary validators**: `parseSceneSnapshot`/`isSceneSnapshot` and
   `parseGraphicsInput`/`isGraphicsInput`, returning detached, bounded safe values.
+
+Worker hosts must import headless graphics from
+`@web-ide/python-graphics/core`: `GraphicsController`, `GRAPHICS_PYTHON_SOURCES`,
+model/service helpers, input/snapshot validators and their types. This entry has
+no React, renderer, plugin, Web IDE or DOM runtime imports. The root entry
+includes UI exports and is intended for the main thread; tree-shaking unused UI
+exports does not guarantee that React's CommonJS initialization leaves a worker.
+`npm run check:worker` verifies actual bundled workers and rejects the root UI
+entry as a negative control. Version 0.2.1 adds this packaging boundary without
+changing graphics behavior or wire protocols.
 
 The separate `@web-ide/python-graphics/transport` export provides
 `DeviceMultiplexer`, `createJsonService`, `ServiceError`, framing helpers, and
