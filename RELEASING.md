@@ -17,7 +17,7 @@ before claiming support, and bump the devDependency pin.
 ## Checklist
 
 1. `npm ci` on a clean checkout.
-2. `npm run validate` (lint, typecheck, TypeScript/Python tests, library build, real CPython/TypeScript transport check).
+2. `npm run validate` (lint, typecheck, TypeScript/Python tests, library build, real CPython/TypeScript transport check, and actual bundled-worker isolation gate).
 3. Download the web-ide release asset to verify against, then
    `WEB_IDE_TARBALL=/abs/path/web-ide-<version>.tgz npm run check:consumer`
    (clean install of both tarballs, bundler + strict NodeNext typecheck,

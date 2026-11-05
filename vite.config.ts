@@ -38,6 +38,7 @@ export default defineConfig({
       entry: {
         index: path.resolve(import.meta.dirname, 'src/index.ts'),
         transport: path.resolve(import.meta.dirname, 'src/transport/index.ts'),
+        core: path.resolve(import.meta.dirname, 'src/core/index.ts'),
       },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.js`,

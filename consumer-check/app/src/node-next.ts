@@ -22,3 +22,14 @@ import { createJsonService, TRANSPORT_PYTHON_SOURCES } from '@web-ide/python-gra
 const independent = createJsonService({ channel: 2, capability: 'echo', version: 1, handleRequest: message => message.value })
 void independent
 void TRANSPORT_PYTHON_SOURCES
+
+import {
+  GraphicsController, GRAPHICS_PYTHON_SOURCES, parseGraphicsInput, parseSceneSnapshot,
+  type GraphicsInput, type GraphicsStatus, type SceneSnapshot,
+} from '@web-ide/python-graphics/core'
+const controller = new GraphicsController()
+const scene: SceneSnapshot = parseSceneSnapshot(controller.snapshot.value)
+const input: GraphicsInput = parseGraphicsInput({ kind: 'keydown', key: 'a' })
+const status: GraphicsStatus = controller.status.value
+void [scene, input, status, GRAPHICS_PYTHON_SOURCES]
+controller.dispose()

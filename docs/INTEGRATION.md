@@ -193,7 +193,27 @@ wait_event resp    ch1  {"id":3,"ok":true,"result":{"event":{"kind":"mouseclick"
 header is the authoritative part. Regenerate full vectors from the package
 exports with `encodeFrame`/`encodeJson`.)
 
-## 4. Public neutral transport API and migration from 0.1
+## 4. Public entries and migration
+
+### 0.2.1 worker entry
+
+Public-player and other worker hosts import `GraphicsController`,
+`GRAPHICS_PYTHON_SOURCES`, `parseGraphicsInput`, `parseSceneSnapshot`, and their
+`GraphicsInput`/`GraphicsStatus`/`SceneSnapshot` types from
+`@web-ide/python-graphics/core`. This entry exports the headless model, service,
+controller, source maps and neutral transport; it never imports a renderer,
+React, DOM or editor implementation. Source-map and measurement type modules
+are also separated from UI declarations. The main-thread renderer (`SvgCanvas`)
+and optional plugin continue to come from the root entry. Importing a few names
+from the root barrel is not a worker-isolation guarantee: CommonJS React wrappers
+may survive tree-shaking. Both public entries are checked in a real Vite worker
+build against retained module IDs and code, including a failing UI-root control.
+
+0.2.1 changes package entry boundaries only. Python API, framing version 1,
+graphics version 1, limits and cancellation behavior are unchanged. The released
+0.2.0 archive remains immutable.
+
+### Neutral transport and migration from 0.1
 
 `@web-ide/python-graphics/transport` is a separate framework-free entry point in
 the exact same 0.2 archive. Its dependency graph contains framing, JSON routing,

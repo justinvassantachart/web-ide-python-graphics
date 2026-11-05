@@ -4,7 +4,8 @@ Proves the published surface is self-sufficient: it packs
 **@web-ide/python-graphics**, installs it together with a **web-ide** tarball
 into a throwaway app that imports both by their bare package names (no source
 alias, no sibling checkout, no workspace link), then typechecks and
-production-builds that app.
+production-builds that app, including a real module worker importing the public
+`/core` entry. The worker build rejects retained React, DOM and editor code.
 
 ```sh
 npm run build                                     # ensure dist/ is current

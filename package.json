@@ -1,6 +1,6 @@
 {
   "name": "@web-ide/python-graphics",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Reusable browser Python 2D graphics companion for the web-ide component: a retained scene model, a bounded byte-device protocol with a multiplexer, an SVG renderer, and an optional Web IDE plugin.",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,10 @@
     "./transport": {
       "types": "./dist/transport/index.d.ts",
       "import": "./dist/transport.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core.js"
     }
   },
   "scripts": {
@@ -35,11 +39,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "validate": "npm run lint && npm run typecheck && npm run test && npm run test:python && npm run build && npm run check:transport",
+    "validate": "npm run lint && npm run typecheck && npm run test && npm run test:python && npm run build && npm run check:transport && npm run check:worker",
     "check:consumer": "node consumer-check/run.mjs",
     "pack:check": "npm pack --dry-run",
     "test:python": "python3 -m unittest discover -s tests/python -v",
-    "check:transport": "node scripts/check-neutral-transport.mjs"
+    "check:transport": "node scripts/check-neutral-transport.mjs",
+    "check:worker": "node scripts/check-worker-core.mjs"
   },
   "peerDependencies": {
     "react": "^18.3.0 || ^19.0.0",
