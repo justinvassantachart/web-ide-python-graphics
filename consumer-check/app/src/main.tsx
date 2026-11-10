@@ -1,3 +1,4 @@
+import { imageSha256, type WorkspaceAssetRefV1 } from 'web-ide/assets'
 import { createRoot } from 'react-dom/client'
 import {
   WebIDE,
@@ -16,8 +17,16 @@ import { PROGRAMS, type ProgramKey } from './programs'
 
 // QA controls (see docs/VERIFICATION.md): program=<key>, host=plain,
 // service=multi, instances=2, panel=<15..57>, theme=dark|light (index.html).
+declare global { interface Window { imageFixtureEvents: { type: string; payload: unknown; at: number }[] } }
+window.imageFixtureEvents = []
 const params = new URLSearchParams(window.location.search)
 const program = (params.get('program') ?? 'shapes') as ProgramKey
+function benchmarkSource(source: string): string {
+  if (program !== 'sand_benchmark') return source
+  const width = params.get('width') === '100' ? 100 : 50
+  const seconds = params.get('duration') === '60' ? 60 : 0
+  return source.replace('WIDTH, HEIGHT, SCALE, FRAMES = 50, 50, 10, 180', `WIDTH, HEIGHT, SCALE, FRAMES = ${width}, 50, 10, 180`).replace('SECONDS = 0', `SECONDS = ${seconds}`)
+}
 if (params.has('worker')) {
   const worker = new Worker(new URL('./graphics-worker.ts', import.meta.url), { type: 'module' })
   worker.onmessage = () => worker.terminate()
@@ -44,8 +53,27 @@ function buildConfig(): WebIDEConfiguration {
   }
 }
 
+// Browser-native fixture generation exercises genuine encoded PNG/JPEG bytes.
+const fixtureImages: Record<string, Uint8Array> = {}
+const fixtureRefs: WorkspaceAssetRefV1[] = []
+if (program === 'image_inputs' || program === 'ghost_benchmark') {
+  const specifications = program === 'ghost_benchmark'
+    ? Array.from({ length: 9 }, (_, index) => ({ path: `/workspace/ghost-inputs/${index}.png`, width: 1000, height: 750, mime: 'image/png' as const, color: `rgb(${100+index},80,60)` }))
+    : [{ path: '/workspace/images/foreground.png', width: 8, height: 6, mime: 'image/png' as const, color: 'blue' }, { path: '/workspace/images/background.jpg', width: 8, height: 6, mime: 'image/jpeg' as const, color: 'red' }]
+  for (const specification of specifications) {
+    const canvas = document.createElement('canvas')
+    canvas.width = specification.width; canvas.height = specification.height
+    const context = canvas.getContext('2d')!
+    context.fillStyle = specification.color; context.fillRect(0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), specification.mime))
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    fixtureImages[specification.path] = bytes
+    fixtureRefs.push({ path: specification.path, blobId: specification.path, sha256: await imageSha256(bytes), byteLength: bytes.length, mediaType: specification.mime })
+  }
+}
+
 function host(id: string, source: string): WebIDEHost {
-  return { workspace: { id, localCache: 'memory', initialFiles: { '/workspace/main.py': source } } }
+  return { events: { includeRuntime: true, emit: (type, payload) => window.imageFixtureEvents.push({ type, payload, at: performance.now() }) }, workspace: { id, localCache: 'memory', ...(fixtureRefs.length ? { documentPersistence: { save: () => undefined }, initialDocument: { schemaVersion: 2 as const, files: [{ path: '/workspace/main.py', content: source }], assets: fixtureRefs }, assets: { read: async (asset: WorkspaceAssetRefV1) => fixtureImages[asset.path]!.slice(), stage: async () => { throw new Error('Fixture is immutable') } } } : { initialFiles: { '/workspace/main.py': source } }) } }
 }
 
 function Instance({ id, source }: { id: string; source: string }) {
@@ -74,7 +102,7 @@ if (twoInstances) {
 } else {
   root.render(
     <div style={{ width: '100vw', height: '100vh' }}>
-      <Instance id={`qa-${program}`} source={PROGRAMS[program] ?? PROGRAMS.shapes} />
+      <Instance id={`qa-${program}`} source={benchmarkSource(PROGRAMS[program] ?? PROGRAMS.shapes)} />
     </div>,
   )
 }

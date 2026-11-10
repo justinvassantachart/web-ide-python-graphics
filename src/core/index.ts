@@ -3,6 +3,7 @@ export { GraphicsController } from '../adapter/controller'
 export type { GraphicsStatus } from '../adapter/controller'
 export {
   GRAPHICS_PYTHON_SOURCES, GRAPHICS_RESOURCE_ID, GRAPHICS_PY_PATH, GRAPHICS_TURTLE_PY_PATH,
+  GRAPHICS_IMAGE_PY_PATH, SIMPLEIMAGE_PY_PATH, DRAWCANVAS_PY_PATH, getPythonGraphicsAvailability, getAvailablePythonGraphicsSources, detectDesktopImageHelper,
 } from './resources'
 export type { MeasureFn, TextObject } from '../model/measure'
 
@@ -69,3 +70,6 @@ export type { JsonServiceOptions } from '../transport/json-service'
 export type { ServiceRequest } from '../mux/service'
 export { TRANSPORT_PYTHON_SOURCES, TRANSPORT_PY_PATH } from '../transport/resources'
 export { parseSceneSnapshot, isSceneSnapshot, parseGraphicsInput, isGraphicsInput } from '../validation'
+
+export { ImageController, IMAGE_CHANNEL, IMAGE_CAPABILITY, IMAGE_VERSION } from '../adapter/image-controller'
+export type { ControlDescriptor, ControlValue } from '../model/controls'

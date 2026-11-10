@@ -1,6 +1,6 @@
 {
   "name": "@web-ide/python-graphics",
-  "version": "0.2.1",
+  "version": "0.3.0-images.0",
   "description": "Reusable browser Python 2D graphics companion for the web-ide component: a retained scene model, a bounded byte-device protocol with a multiplexer, an SVG renderer, and an optional Web IDE plugin.",
   "type": "module",
   "license": "MIT",
@@ -17,7 +17,8 @@
     "dist",
     "README.md",
     "LICENSE.md",
-    "docs/INTEGRATION.md"
+    "docs/INTEGRATION.md",
+    "examples/starters"
   ],
   "exports": {
     ".": {
@@ -39,22 +40,18 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "validate": "npm run lint && npm run typecheck && npm run test && npm run test:python && npm run build && npm run check:transport && npm run check:worker",
+    "validate": "npm run lint && npm run typecheck && npm run test && npm run test:python && npm run build && npm run check:transport && npm run check:worker && npm run check:images",
     "check:consumer": "node consumer-check/run.mjs",
     "pack:check": "npm pack --dry-run",
     "test:python": "python3 -m unittest discover -s tests/python -v",
     "check:transport": "node scripts/check-neutral-transport.mjs",
-    "check:worker": "node scripts/check-worker-core.mjs"
+    "check:worker": "node scripts/check-worker-core.mjs",
+    "check:images": "node scripts/check-images.mjs"
   },
   "peerDependencies": {
     "react": "^18.3.0 || ^19.0.0",
     "react-dom": "^18.3.0 || ^19.0.0",
-    "web-ide": ">=0.10.0"
-  },
-  "peerDependenciesMeta": {
-    "web-ide": {
-      "optional": true
-    }
+    "web-ide": ">=0.11.0-images.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -74,7 +71,7 @@
     "vite": "^7.3.7",
     "vite-plugin-dts": "5.1.2",
     "vitest": "^4.1.12",
-    "web-ide": "https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.10.0/web-ide-0.10.0.tgz"
+    "web-ide": "https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.11.0-images.0/web-ide-0.11.0-images.0.tgz"
   },
   "keywords": [
     "web-ide",

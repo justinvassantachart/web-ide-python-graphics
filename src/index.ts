@@ -21,6 +21,7 @@ export { controllerRegistry } from './adapter/registry'
 export {
   createGraphicsResource,
   GRAPHICS_PYTHON_SOURCES,
+  GRAPHICS_IMAGE_PY_PATH, SIMPLEIMAGE_PY_PATH, DRAWCANVAS_PY_PATH, getPythonGraphicsAvailability, getAvailablePythonGraphicsSources, detectDesktopImageHelper,
   GRAPHICS_PY_PATH,
   GRAPHICS_TURTLE_PY_PATH,
   GRAPHICS_RESOURCE_ID,
@@ -93,3 +94,12 @@ export type { JsonServiceOptions } from './transport/json-service'
 export type { ServiceRequest } from './mux/service'
 export { TRANSPORT_PYTHON_SOURCES, TRANSPORT_PY_PATH } from './transport/resources'
 export { parseSceneSnapshot, isSceneSnapshot, parseGraphicsInput, isGraphicsInput } from './validation'
+
+export { ImageController, IMAGE_CHANNEL, IMAGE_CAPABILITY, IMAGE_VERSION } from './adapter/image-controller'
+export type { ControlDescriptor, ControlValue } from './model/controls'
+
+export { ImageGallery } from './renderer/ImageGallery'
+export type { ImageGalleryProps } from './renderer/ImageGallery'
+export { RasterImage } from './renderer/RasterImage'
+export type { ImageResourceReader } from './renderer/RasterImage'
+export { GraphicsControls } from './renderer/GraphicsControls'

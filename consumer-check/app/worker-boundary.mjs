@@ -6,7 +6,7 @@ export function assertHeadlessGraphicsWorker() {
       for (const output of Object.values(bundle)) {
         if (output.type !== 'chunk') continue
         const forbidden = Object.entries(output.modules).filter(([id, module]) =>
-          module.renderedLength > 0 && /\/node_modules\/(?:react(?:-dom)?|scheduler|web-ide|monaco-editor)(?:\/|$)/.test(id.replaceAll('\\', '/')),
+          module.renderedLength > 0 && !/\/node_modules\/web-ide\/dist\/(?:assets|validation|canonical-contract|browser-codec)(?:-[^/]+)?\.js$/.test(id.replaceAll('\\', '/')) && /\/node_modules\/(?:react(?:-dom)?|scheduler|web-ide|monaco-editor)(?:\/|$)/.test(id.replaceAll('\\', '/')),
         )
         if (forbidden.length) {
           throw new Error(`Worker retained forbidden framework modules: ${forbidden.map(([id]) => id).join(', ')}`)

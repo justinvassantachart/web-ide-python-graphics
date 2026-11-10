@@ -6,6 +6,7 @@
  * compute (they need the DOM), so {@link geometricBounds} returns null for text.
  */
 
+import type { ControlDescriptor } from './controls'
 import { finiteNumber, type Bounds, type Point, type TextAnchor } from './geometry'
 import { LIMITS } from '../protocol/constants'
 import { ProtocolError } from '../protocol/codec'
@@ -24,6 +25,7 @@ interface ObjectBase {
 }
 
 export type SceneObject =
+  | (ObjectBase & { readonly kind: 'image'; readonly x: number; readonly y: number; readonly w: number; readonly h: number; readonly resourceId: string; readonly resourceVersion: number; readonly sampling: 'nearest' | 'smooth' })
   | (ObjectBase & { readonly kind: 'line'; readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number })
   | (ObjectBase & { readonly kind: 'polyline'; readonly points: readonly Point[] })
   | (ObjectBase & { readonly kind: 'rect'; readonly x: number; readonly y: number; readonly w: number; readonly h: number })
@@ -55,6 +57,7 @@ export interface SceneSnapshot {
   readonly canvas: CanvasState
   readonly objects: readonly SceneObject[]
   readonly version: number
+  readonly controls?: readonly ControlDescriptor[]
 }
 
 export const DEFAULT_CANVAS: CanvasState = { w: 300, h: 200, background: 'white', title: '' }
@@ -64,6 +67,7 @@ export function objectReferencePoint(object: SceneObject): Point {
   switch (object.kind) {
     case 'line':
       return [object.x1, object.y1]
+    case 'image':
     case 'rect':
     case 'oval':
     case 'text':
@@ -79,6 +83,7 @@ export function translateObject(object: SceneObject, dx: number, dy: number): Sc
   switch (object.kind) {
     case 'line':
       return { ...object, x1: finiteNumber(object.x1 + dx, 'translated x1'), y1: finiteNumber(object.y1 + dy, 'translated y1'), x2: finiteNumber(object.x2 + dx, 'translated x2'), y2: finiteNumber(object.y2 + dy, 'translated y2') }
+    case 'image':
     case 'rect':
     case 'oval':
     case 'text':
@@ -94,6 +99,7 @@ export function geometricBounds(object: SceneObject): Bounds | null {
   switch (object.kind) {
     case 'line':
       return boundsOfPoints([[object.x1, object.y1], [object.x2, object.y2]])
+    case 'image':
     case 'rect':
     case 'oval':
       return normalizeRect(object.x, object.y, object.w, object.h)

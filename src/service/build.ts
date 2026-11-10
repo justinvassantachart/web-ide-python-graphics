@@ -20,7 +20,7 @@ import {
 import type { Style, SceneObject } from '../model/scene'
 
 const FONT_FAMILIES = new Set(['sans-serif', 'serif', 'monospace', 'system-ui', 'cursive', 'fantasy'])
-const SHAPES = new Set(['line', 'polyline', 'rect', 'oval', 'polygon', 'text'])
+const SHAPES = new Set(['line', 'polyline', 'rect', 'oval', 'polygon', 'text', 'image'])
 
 function requireString(value: unknown, field: string, maxLen: number): string {
   if (typeof value !== 'string') throw new ProtocolError('bad_request', `${field} must be a string`)
@@ -77,6 +77,14 @@ export function buildObject(payload: Record<string, unknown>): SceneObject {
   const shapeDefaults = { fill: 'none', outline: 'black', width: 1 }
 
   switch (shape) {
+    case 'image': {
+      const resourceId = validateObjectId(payload.resourceId)
+      if (!Number.isSafeInteger(payload.resourceVersion) || (payload.resourceVersion as number) < 1) throw new ProtocolError('bad_request', 'invalid image version')
+      if (payload.sampling !== undefined && payload.sampling !== 'nearest' && payload.sampling !== 'smooth') throw new ProtocolError('bad_request', 'invalid image sampling')
+      return { id, kind: 'image', visible, style: buildStyle(payload, { fill: 'none', outline: 'none', width: 0 }),
+        x: finiteNumber(payload.x, 'x'), y: finiteNumber(payload.y, 'y'), w: nonNegative(payload.w, 'w'), h: nonNegative(payload.h, 'h'),
+        resourceId, resourceVersion: payload.resourceVersion as number, sampling: payload.sampling === 'nearest' ? 'nearest' : 'smooth' }
+    }
     case 'line':
       return {
         id, kind: 'line', visible, style: buildStyle(payload, shapeDefaults),
@@ -124,6 +132,17 @@ export function applyUpdate(current: SceneObject, props: unknown): SceneObject {
   let next: SceneObject = { ...current, style }
 
   switch (current.kind) {
+    case 'image': {
+      const resourceId = has(patch, 'resourceId') ? validateObjectId(patch.resourceId) : current.resourceId
+      const version = has(patch, 'resourceVersion') ? patch.resourceVersion : current.resourceVersion
+      if (!Number.isSafeInteger(version) || (version as number) < 1) throw new ProtocolError('bad_request', 'invalid image version')
+      next = { ...current, style, resourceId, resourceVersion: version as number,
+        x: has(patch, 'x') ? finiteNumber(patch.x, 'x') : current.x,
+        y: has(patch, 'y') ? finiteNumber(patch.y, 'y') : current.y,
+        w: has(patch, 'w') ? nonNegative(patch.w, 'w') : current.w,
+        h: has(patch, 'h') ? nonNegative(patch.h, 'h') : current.h }
+      break
+    }
     case 'line':
       next = {
         ...next, kind: 'line',

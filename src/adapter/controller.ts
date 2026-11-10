@@ -5,6 +5,8 @@
  * one is mounted. One controller exists per Web IDE mount (per runtime session).
  */
 
+import { ImageController } from './image-controller'
+import type { ImageServiceOptions } from 'web-ide/assets'
 import { Observable } from '../observable'
 import type { SceneSnapshot } from '../model/scene'
 import {
@@ -28,6 +30,7 @@ export interface GraphicsStatus {
 
 export class GraphicsController {
   readonly service: GraphicsService
+  readonly images: ImageController
   readonly snapshot: Observable<SceneSnapshot>
   readonly status = new Observable<GraphicsStatus>({ phase: 'never-run', drew: false })
 
@@ -36,9 +39,14 @@ export class GraphicsController {
   private dirty = false
   private disposed = false
 
-  constructor(scheduler?: GraphicsScheduler) {
+  constructor(scheduler?: GraphicsScheduler, imageOptions?: ImageServiceOptions) {
+    this.images = new ImageController(imageOptions)
     const host: GraphicsServiceHost = {
       requestRender: () => this.scheduleRender(),
+      onSceneMutation: () => this.images.retainScene(this.service.snapshot(), false),
+      validateImage: (resourceId, version) => {
+        if (!this.images.service.snapshot().resources.some(ref => ref.resourceId === resourceId && ref.version === version)) throw new Error('stale image resource')
+      },
       measureText: (object) => this.measurer?.(object) ?? null,
       onConnected: () => this.status.set({ phase: 'running', drew: false }),
       onFirstCommand: () => this.status.set({ phase: 'running', drew: true }),
@@ -51,6 +59,10 @@ export class GraphicsController {
   /** The HostService to register with a {@link DeviceMultiplexer}. */
   get hostService(): HostService {
     return this.service
+  }
+
+  get hostServices(): HostService[] {
+    return [this.hostService, this.images.hostService]
   }
 
   submitInput(event: GraphicsInput): void {
@@ -67,17 +79,22 @@ export class GraphicsController {
     this.renderScheduled = false
     if (!this.dirty) return
     this.dirty = false
-    this.snapshot.set(this.service.snapshot())
+    const snapshot = this.service.snapshot()
+    this.images.retainScene(snapshot, false)
+    this.snapshot.set(snapshot)
+    this.images.retainScene(snapshot)
   }
 
   /** Clear stale output between runs, including runs with no graphics service. */
   reset(): void {
+    this.images.reset()
     this.service.reset()
     this.status.set({ phase: 'never-run', drew: false })
     this.flush()
   }
 
   dispose(): void {
+    this.images.dispose()
     this.disposed = true
     this.measurer = null
   }

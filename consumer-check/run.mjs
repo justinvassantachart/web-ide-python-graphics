@@ -93,7 +93,9 @@ async function main() {
       dependencies: {
         react: '^19.2.0', 'react-dom': '^19.2.0',
         'web-ide': `file:${webide}`, '@web-ide/python-graphics': `file:${companion}`,
+
       },
+      ...(process.env.DEBUGGER_SH_TARBALL ? { overrides: { 'debugger-sh': `file:${process.env.DEBUGGER_SH_TARBALL}` } } : {}),
       devDependencies: {
         '@types/react': '^19.2.7', '@types/react-dom': '^19.2.3', '@vitejs/plugin-react': '^5.1.1',
         buffer: '6.0.3', events: '3.3.0', 'path-browserify': '1.0.1', process: '0.11.10',

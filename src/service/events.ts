@@ -30,7 +30,12 @@ export interface KeyInput {
   readonly text?: string
 }
 
-export type GraphicsInput = PointerInput | KeyInput
+export interface ControlInput {
+  readonly kind: 'controlchange' | 'controlsubmit' | 'controlclick'
+  readonly controlId: string
+  readonly value: string | number | boolean
+}
+export type GraphicsInput = PointerInput | KeyInput | ControlInput
 
 /** Consecutive move/drag events coalesce (only the latest matters). */
 export function isCoalescible(event: GraphicsInput): boolean {

@@ -10,7 +10,7 @@ permissions:
 
 env:
   # The web-ide release this version is verified against (see RELEASING.md).
-  WEB_IDE_VERSION: 0.10.0
+  WEB_IDE_VERSION: 0.11.0-images.0
 
 jobs:
   validate:

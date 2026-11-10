@@ -7,6 +7,8 @@
 
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { GraphicsControls } from './GraphicsControls'
+import { RasterImage, type ImageResourceReader } from './RasterImage'
 import { anchoredBox, type TextAnchor } from '../model/geometry'
 import type { SceneObject, SceneSnapshot } from '../model/scene'
 import type { GraphicsInput } from '../service/events'
@@ -15,6 +17,7 @@ export type { MeasureFn, TextObject } from '../model/measure'
 
 export interface SvgCanvasProps {
   snapshot: SceneSnapshot
+  readImageResource?: ImageResourceReader
   onInput?: (event: GraphicsInput) => void
   /** Registers/unregisters the live text measurer with the owner. */
   bindMeasure?: (measure: MeasureFn | null) => void
@@ -72,7 +75,7 @@ function baselineFor(anchor: TextAnchor): Baseline {
   return 'central'
 }
 
-function renderObject(object: SceneObject) {
+function renderObject(object: SceneObject, readImageResource?: ImageResourceReader) {
   if (!object.visible) return null
   const { style } = object
   const common = {
@@ -82,6 +85,10 @@ function renderObject(object: SceneObject) {
     opacity: style.opacity,
   }
   switch (object.kind) {
+    case 'image':
+      return <foreignObject key={object.id} x={object.x} y={object.y} width={object.w} height={object.h} opacity={style.opacity} pointerEvents="none">
+        <RasterImage resourceId={object.resourceId} version={object.resourceVersion} readResource={readImageResource} sampling={object.sampling} />
+      </foreignObject>
     case 'line':
       return (
         <line key={object.id} x1={object.x1} y1={object.y1} x2={object.x2} y2={object.y2}
@@ -114,7 +121,7 @@ function pointsToString(points: readonly (readonly [number, number])[]): string 
   return points.map(([x, y]) => `${x},${y}`).join(' ')
 }
 
-export function SvgCanvas({ snapshot, onInput, bindMeasure }: SvgCanvasProps) {
+export function SvgCanvas({ snapshot, onInput, bindMeasure, readImageResource }: SvgCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const measureTextRef = useRef<SVGTextElement>(null)
   const pointer = useRef({ down: false, button: 0, x0: 0, y0: 0, moved: false })
@@ -199,7 +206,7 @@ export function SvgCanvas({ snapshot, onInput, bindMeasure }: SvgCanvasProps) {
   }, [onInput])
 
   return (
-    <div style={containerStyle} data-python-graphics-canvas="">
+    <div style={{ ...containerStyle, flexDirection: 'column' }} data-python-graphics-canvas="">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${canvas.w} ${canvas.h}`}
@@ -215,14 +222,16 @@ export function SvgCanvas({ snapshot, onInput, bindMeasure }: SvgCanvasProps) {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onKeyDown={onKeyDown}
         onKeyUp={onKeyUp}
       >
         <rect x={0} y={0} width={canvas.w} height={canvas.h} fill={canvas.background} />
-        {objects.map(renderObject)}
+        {objects.map(object => renderObject(object, readImageResource))}
         {/* Off-screen probe for text measurement; never visible. */}
         <text ref={measureTextRef} x={-99999} y={-99999} visibility="hidden" aria-hidden="true" />
       </svg>
+      {snapshot.controls?.length ? <GraphicsControls controls={snapshot.controls} onInput={onInput} /> : null}
     </div>
   )
 }
