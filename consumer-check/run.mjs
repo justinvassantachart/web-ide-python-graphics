@@ -60,6 +60,12 @@ async function loadPrograms() {
       programs[keyFor(file)] = await readFile(path.join(dir, file), 'utf8')
     }
   }
+  const startersDir = path.join(pkgRoot, 'examples/starters')
+  const gridSource = await readFile(path.join(startersDir, 'grid.py'), 'utf8')
+  for (const starter of ['sand', 'waterfall']) {
+    programs[`${starter}_starter`] = gridSource + '\n' + (await readFile(path.join(startersDir, `${starter}.py`), 'utf8')).replace('from grid import Grid\n', '')
+  }
+  programs.baby_graphics = await readFile(path.join(startersDir, 'baby_graphics.py'), 'utf8')
   return programs
 }
 

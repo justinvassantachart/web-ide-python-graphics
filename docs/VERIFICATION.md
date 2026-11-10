@@ -1,3 +1,13 @@
+# 0.3.0-images.1 starter correction
+
+Supersedes images.0 for staging. The Sand starter now paints each press/drag event
+before processing a following release, so quick clicks cannot disappear between
+frames. The shared image implementation and wire protocol are unchanged. The
+consumer now includes the actual Sand/Waterfall/Baby Graphics starter sources;
+`IMAGE_BENCHMARK=brush` checks quick Sand and BigErase clicks against displayed
+pixels; Chromium, Firefox and WebKit all pass both clicks. Images.0 remains immutable; its library, engine and browser evidence
+below still applies to the unchanged runtime code.
+
 # 0.3 image and course graphics candidate verification (2026-11-10)
 
 The candidate composes Web IDE 0.11.0-images.0 and debugger-sh

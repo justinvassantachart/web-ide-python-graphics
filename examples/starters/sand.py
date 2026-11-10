@@ -15,6 +15,14 @@ def step(grid, gravity, brownian, strength):
     """Call the student's gravity/Brownian functions here; keep their doctests."""
     return grid
 
+def paint(grid, point, mode):
+    radius = 4 if mode == 'BigErase' else 0
+    value = {'Sand': 's', 'Rock': 'r', 'Erase': None, 'BigErase': None}[mode]
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            x, y = point[0] + dx, point[1] + dy
+            if dx * dx + dy * dy <= radius * radius and grid.in_bounds(x, y): grid.set(x, y, value)
+
 def main():
     grid = Grid(WIDTH, HEIGHT)
     canvas = Canvas(WIDTH * CELL_SIZE, HEIGHT * CELL_SIZE, 'Sand')
@@ -37,16 +45,14 @@ def main():
             if event.type in ('mousedown', 'mousedrag', 'mousemove', 'mouseup'):
                 point = (int(event.x // CELL_SIZE), int(event.y // CELL_SIZE))
                 if event.type == 'mousedown': painting = True
+                # Paint the event before draining a following release: even a
+                # quick click must leave a mark. Held brushes also paint below.
+                if event.type in ('mousedown', 'mousedrag') and painting:
+                    paint(grid, point, values[mode])
                 if event.type == 'mouseup': painting = False
                 canvas.moveto(brush, point[0] * CELL_SIZE, point[1] * CELL_SIZE)
             event = canvas.poll_event()
-        if painting:
-            radius = 4 if values[mode] == 'BigErase' else 0
-            value = {'Sand': 's', 'Rock': 'r', 'Erase': None, 'BigErase': None}[values[mode]]
-            for dy in range(-radius, radius + 1):
-                for dx in range(-radius, radius + 1):
-                    x, y = point[0] + dx, point[1] + dy
-                    if dx * dx + dy * dy <= radius * radius and grid.in_bounds(x, y): grid.set(x, y, value)
+        if painting: paint(grid, point, values[mode])
         grid = step(grid, values[gravity], values[brownian], values[strength])
         pixels = bytearray()
         for y in range(HEIGHT):

@@ -59,6 +59,26 @@ for (const name of (process.env.IMAGE_BROWSERS || 'chromium').split(',')) {
       const acknowledgedMs = Date.now() - started
       await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).some(button => button.textContent === 'Stop'), undefined, { timeout: 2000 })
       await record({ browser: name, program: 'ghost-stop-during-local-pixel-loop', acknowledgedMs, settledMs: Date.now() - started })
+    } else if (process.env.IMAGE_BENCHMARK === 'brush') {
+      await page.goto(`${base}?program=sand_starter`)
+      await page.getByRole('button', { name: 'Run', exact: true }).click({ timeout: 60000 })
+      const svg = page.getByRole('img', { name: 'Graphics canvas: Sand', exact: true })
+      await svg.waitFor({ timeout: 120000 })
+      const box = await svg.boundingBox()
+      if (!box) throw new Error('Missing Sand canvas')
+      await page.mouse.click(box.x + 5.5 / 50 * box.width, box.y + 5.5 / 50 * box.height)
+      await page.waitForFunction(() => {
+        const canvas = document.querySelector('foreignObject canvas')
+        return canvas && Array.from(canvas.getContext('2d').getImageData(5, 5, 1, 1).data).join(',') === '235,190,65,255'
+      }, undefined, { timeout: 5000 })
+      await page.getByRole('radio', { name: 'BigErase', exact: true }).check()
+      await page.mouse.click(box.x + 5.5 / 50 * box.width, box.y + 5.5 / 50 * box.height)
+      await page.waitForFunction(() => {
+        const canvas = document.querySelector('foreignObject canvas')
+        return canvas && Array.from(canvas.getContext('2d').getImageData(5, 5, 1, 1).data).join(',') === '255,255,255,255'
+      }, undefined, { timeout: 5000 })
+      await page.getByRole('button', { name: 'Stop', exact: true }).first().click()
+      await record({ browser: name, program: 'sand_starter', quickClick: true, bigEraseQuickClick: true })
     } else if (process.env.IMAGE_BENCHMARK === 'controls') {
       await page.goto(`${base}?program=controls`)
       await page.getByRole('button', { name: 'Run', exact: true }).click({ timeout: 60000 })

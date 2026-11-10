@@ -8,7 +8,7 @@ through Web IDE's **public plugin and runtime APIs only**; it ships no second
 Python interpreter and contains no application code (no auth, AI, persistence,
 branding, or backend).
 
-> Status: v0.3.0-images.0 candidate. A separately maintained companion to web-ide (like
+> Status: v0.3.0-images.1 candidate. A separately maintained companion to web-ide (like
 > `@web-ide/karel`), consuming only its public plugin and runtime APIs. Not
 > published to a registry; consume it from a packed tarball (see Installation)
 > or a `file:` reference. Verified against web-ide `0.11.0-images.0` and the binary-file engine candidate.
@@ -61,11 +61,11 @@ Not published to a registry. Install from packed tarballs:
 # 1. web-ide: use the release asset for the version you target, e.g.
 #    https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.11.0-images.0/web-ide-0.11.0-images.0.tgz
 # 2. this package: from a GitHub release asset, or build it yourself:
-npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.3.0-images.0.tgz
+npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.3.0-images.1.tgz
 
 # 3. In your application:
 npm install /abs/path/web-ide-0.11.0-images.0.tgz \
-            /abs/path/web-ide-python-graphics-0.3.0-images.0.tgz \
+            /abs/path/web-ide-python-graphics-0.3.0-images.1.tgz \
             react react-dom
 ```
 

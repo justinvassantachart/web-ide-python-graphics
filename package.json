@@ -1,6 +1,6 @@
 {
   "name": "@web-ide/python-graphics",
-  "version": "0.3.0-images.0",
+  "version": "0.3.0-images.1",
   "description": "Reusable browser Python 2D graphics companion for the web-ide component: a retained scene model, a bounded byte-device protocol with a multiplexer, an SVG renderer, and an optional Web IDE plugin.",
   "type": "module",
   "license": "MIT",
