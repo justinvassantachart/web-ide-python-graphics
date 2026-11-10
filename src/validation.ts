@@ -1,4 +1,5 @@
 /** Public trust-boundary decoders for hosts that carry graphics across workers. */
+import { parseControl, MAX_CONTROLS } from './model/controls'
 import { isSafeColor } from './model/color'
 import { finiteNumber } from './model/geometry'
 import type { SceneObject, SceneSnapshot } from './model/scene'
@@ -45,6 +46,10 @@ function sceneObject(value: unknown): SceneObject {
     opacity: range(style.opacity, 0, 1),
   }
   switch (object.kind) {
+    case 'image':
+      keys(object, [...base, 'x', 'y', 'w', 'h', 'resourceId', 'resourceVersion', 'sampling'])
+      for (const key of ['x', 'y', 'w', 'h', 'resourceId', 'resourceVersion', 'sampling']) payload[key] = object[key]
+      break
     case 'line':
       keys(object, [...base, 'x1', 'y1', 'x2', 'y2'])
       for (const key of ['x1', 'y1', 'x2', 'y2']) payload[key] = object[key]
@@ -75,7 +80,13 @@ function sceneObject(value: unknown): SceneObject {
 /** Returns a detached validated snapshot; throws ProtocolError on invalid data. */
 export function parseSceneSnapshot(value: unknown): SceneSnapshot {
   const snapshot = record(value)
-  keys(snapshot, ['canvas', 'objects', 'version'])
+  keys(snapshot, Object.hasOwn(snapshot, 'controls') ? ['canvas', 'objects', 'version', 'controls'] : ['canvas', 'objects', 'version'])
+  let controls
+  if (snapshot.controls !== undefined) {
+    if (!Array.isArray(snapshot.controls) || snapshot.controls.length > MAX_CONTROLS) return fail()
+    controls = snapshot.controls.map(parseControl)
+    if (new Set(controls.map(v => v.id)).size !== controls.length) return fail()
+  }
   const canvas = record(snapshot.canvas)
   keys(canvas, ['w', 'h', 'background', 'title'])
   if (!Number.isSafeInteger(snapshot.version) || (snapshot.version as number) < 0) return fail()
@@ -101,7 +112,7 @@ export function parseSceneSnapshot(value: unknown): SceneSnapshot {
       h: range(canvas.h, 1, LIMITS.MAX_CANVAS_DIM),
       background: color(canvas.background), title: text(canvas.title, 256),
     },
-    objects, version: snapshot.version as number,
+    objects, version: snapshot.version as number, ...(controls ? { controls } : {}),
   }
 }
 
@@ -113,6 +124,13 @@ export function isSceneSnapshot(value: unknown): value is SceneSnapshot {
 export function parseGraphicsInput(value: unknown): GraphicsInput {
   const input = record(value)
   switch (input.kind) {
+    case 'controlchange': case 'controlsubmit': case 'controlclick': {
+      keys(input, ['kind', 'controlId', 'value'])
+      if (typeof input.value !== 'boolean' && typeof input.value !== 'string' && typeof input.value !== 'number') return fail()
+      if (typeof input.value === 'string' && input.value.length > 4096) return fail()
+      if (typeof input.value === 'number' && !Number.isSafeInteger(input.value)) return fail()
+      return { kind: input.kind, controlId: text(input.controlId, 128), value: input.value }
+    }
     case 'mousedown': case 'mouseup': case 'mouseclick': case 'mousemove': case 'mousedrag': {
       keys(input, ['kind', 'x', 'y', 'button'])
       // PointerEvent permits auxiliary buttons beyond the usual left/middle/right.

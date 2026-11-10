@@ -8,9 +8,8 @@ owner decision.
 ## Compatibility
 
 Each release records the exact web-ide version it was verified against. The
-companion depends only on public web-ide contracts that have been stable since
-0.7.3 (`RuntimeSession.registerHostDevice`, execution-only plugin resources,
-`IDEPanelContribution`), so `peerDependencies.web-ide` is `>=0.10.0`. When
+0.3 companion adds the public `web-ide/assets` entry to its plugin/runtime
+contracts, so `peerDependencies.web-ide` is `>=0.11.0-images.0`. When
 web-ide publishes a new version, re-run the consumer check against its tarball
 before claiming support, and bump the devDependency pin.
 
@@ -23,7 +22,7 @@ before claiming support, and bump the devDependency pin.
    (clean install of both tarballs, bundler + strict NodeNext typecheck,
    production build).
 4. Run the browser matrix in `docs/VERIFICATION.md` against the consumer-check
-   app (Chromium; needs network to jsDelivr for Monaco and runno.dev for the
+   app (Chromium, Firefox and WebKit; needs network to jsDelivr for Monaco and runno.dev for the
    Python WASM runtime). Record the browser version and update the table.
 5. Update `version` in `package.json` and the "verified against" note in
    `README.md`; protocol changes must bump `TRANSPORT_VERSION` or

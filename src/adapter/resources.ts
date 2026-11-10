@@ -10,6 +10,7 @@ import type { IDEWorkspaceResourceContribution } from 'web-ide'
 import { GRAPHICS_PYTHON_SOURCES, GRAPHICS_RESOURCE_ID } from '../core/resources'
 export {
   GRAPHICS_PYTHON_SOURCES, GRAPHICS_RESOURCE_ID, GRAPHICS_PY_PATH, GRAPHICS_TURTLE_PY_PATH,
+  GRAPHICS_IMAGE_PY_PATH, SIMPLEIMAGE_PY_PATH, DRAWCANVAS_PY_PATH, getPythonGraphicsAvailability, getAvailablePythonGraphicsSources, detectDesktopImageHelper,
 } from '../core/resources'
 
 export function createGraphicsResource(): IDEWorkspaceResourceContribution {

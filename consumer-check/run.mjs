@@ -60,6 +60,12 @@ async function loadPrograms() {
       programs[keyFor(file)] = await readFile(path.join(dir, file), 'utf8')
     }
   }
+  const startersDir = path.join(pkgRoot, 'examples/starters')
+  const gridSource = await readFile(path.join(startersDir, 'grid.py'), 'utf8')
+  for (const starter of ['sand', 'waterfall']) {
+    programs[`${starter}_starter`] = gridSource + '\n' + (await readFile(path.join(startersDir, `${starter}.py`), 'utf8')).replace('from grid import Grid\n', '')
+  }
+  programs.baby_graphics = await readFile(path.join(startersDir, 'baby_graphics.py'), 'utf8')
   return programs
 }
 
@@ -93,7 +99,9 @@ async function main() {
       dependencies: {
         react: '^19.2.0', 'react-dom': '^19.2.0',
         'web-ide': `file:${webide}`, '@web-ide/python-graphics': `file:${companion}`,
+
       },
+      ...(process.env.DEBUGGER_SH_TARBALL ? { overrides: { 'debugger-sh': `file:${process.env.DEBUGGER_SH_TARBALL}` } } : {}),
       devDependencies: {
         '@types/react': '^19.2.7', '@types/react-dom': '^19.2.3', '@vitejs/plugin-react': '^5.1.1',
         buffer: '6.0.3', events: '3.3.0', 'path-browserify': '1.0.1', process: '0.11.10',

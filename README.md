@@ -8,10 +8,10 @@ through Web IDE's **public plugin and runtime APIs only**; it ships no second
 Python interpreter and contains no application code (no auth, AI, persistence,
 branding, or backend).
 
-> Status: v0.2.1. A separately maintained companion to web-ide (like
+> Status: v0.3.0-images.1 candidate. A separately maintained companion to web-ide (like
 > `@web-ide/karel`), consuming only its public plugin and runtime APIs. Not
 > published to a registry; consume it from a packed tarball (see Installation)
-> or a `file:` reference. Verified against web-ide `0.10.0`.
+> or a `file:` reference. Verified against web-ide `0.11.0-images.0` and the binary-file engine candidate.
 
 ## What it is
 
@@ -26,9 +26,9 @@ branding, or backend).
 
 ## Install / compose (host side)
 
-Peer dependencies: `react`, `react-dom`, and `web-ide` (optional — only the
-plugin/panel needs it; the renderer, service, model, and protocol are
-framework-generic). The companion has **no runtime dependencies** of its own.
+Peer dependencies: `react`, `react-dom`, and `web-ide >=0.11.0-images.0`.
+The headless `/core` entry consumes only `web-ide/assets`; the standalone
+`/transport` entry remains independent of Web IDE and React.
 
 ```tsx
 import { WebIDE, WebIDEHostProvider, type WebIDEConfiguration } from 'web-ide'
@@ -59,13 +59,13 @@ Not published to a registry. Install from packed tarballs:
 
 ```sh
 # 1. web-ide: use the release asset for the version you target, e.g.
-#    https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.10.0/web-ide-0.10.0.tgz
+#    https://github.com/justinvassantachart/web-ide/releases/download/web-ide-v0.11.0-images.0/web-ide-0.11.0-images.0.tgz
 # 2. this package: from a GitHub release asset, or build it yourself:
-npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.2.1.tgz
+npm ci && npm run build && npm pack       # -> web-ide-python-graphics-0.3.0-images.1.tgz
 
 # 3. In your application:
-npm install /abs/path/web-ide-0.10.0.tgz \
-            /abs/path/web-ide-python-graphics-0.2.1.tgz \
+npm install /abs/path/web-ide-0.11.0-images.0.tgz \
+            /abs/path/web-ide-python-graphics-0.3.0-images.1.tgz \
             react react-dom
 ```
 
@@ -172,14 +172,13 @@ content, never HTML. All guest input is bounded and re-validated on the host
 Aggregate retained geometry is capped at 100000 polyline/polygon vertices and
 text at 1048576 UTF-16 units, independently of per-object limits.
 Keyboard capture is scoped to the focused canvas; there is no document-wide
-capture or mutable global canvas. There is no image API in v1.
+capture or mutable global canvas. Image decoding, transfers and retained rasters
+are separately bounded by the shared `web-ide/assets` service.
 
 ## Limitations / deferred
 
-- **Images**: no image API in v1 (the `unsupported` code is reserved for it); a
-  bounded host-approved asset registry is the planned follow-up.
 - **turtle stdlib parity**: not claimed; only a turtle-style adapter.
-- **Renderer**: SVG only; a Canvas 2D backend (for very high object counts) is a
+- **Renderer**: retained SVG with raster image canvases; a Canvas 2D backend (for very high object counts) is a
   possible future addition behind the existing renderer seam.
 
 ## Development
@@ -187,7 +186,7 @@ capture or mutable global canvas. There is no image API in v1.
 ```sh
 npm ci
 npm run validate                                   # eslint + tsc + vitest + vite build
-WEB_IDE_TARBALL=/abs/path/web-ide-0.10.0.tgz npm run check:consumer
+WEB_IDE_TARBALL=/abs/path/web-ide-0.11.0-images.0.tgz npm run check:consumer
 ```
 
 `web-ide` is a devDependency pinned to the release tarball this version was
@@ -200,3 +199,15 @@ See [docs/DESIGN.md](docs/DESIGN.md) for rationale,
 [docs/INTEGRATION.md](docs/INTEGRATION.md) for the binding protocol and test
 vectors, [docs/VERIFICATION.md](docs/VERIFICATION.md) for the verification
 record, and [RELEASING.md](RELEASING.md) for the release process.
+
+### Images and course graphics
+
+The images candidate supports `from simpleimage import SimpleImage` and
+`from graphics import Image`, with compact local pixel loops, PNG/JPEG/WebP
+loading, independent image outputs and PNG/JPEG guest-file saves. `Canvas`
+retains image sprites alongside shapes and text. `from drawcanvas import
+DrawCanvas` supplies the width/height drawing facade, and native controls
+support the adapted Baby Graphics and Sand/Waterfall starter shells.
+See [image integration and API contracts](docs/INTEGRATION.md#image-and-teaching-graphics-integration).
+Host applications still own uploads, persistence, permissions and explicit
+Save to project. One interactive canvas and multiple image outputs are supported.

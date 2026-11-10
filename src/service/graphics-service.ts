@@ -25,6 +25,7 @@ import {
   type SceneObject,
   type SceneSnapshot,
 } from '../model/scene'
+import { parseControl, MAX_CONTROLS, type ControlDescriptor } from '../model/controls'
 import { applyUpdate, buildObject } from './build'
 import { isCoalescible, type GraphicsInput } from './events'
 import type { HostService, ServiceConnection, ServiceRequest } from '../mux/service'
@@ -44,6 +45,9 @@ const defaultScheduler: GraphicsScheduler = {
 export interface GraphicsServiceHost {
   /** The scene changed; schedule a repaint. */
   requestRender(): void
+  /** Pin references on every mutation, even while visual publication is batched. */
+  onSceneMutation?(): void
+  validateImage?(resourceId: string, version: number): void
   /** Measure text bounds via the live renderer; null when unavailable. */
   measureText?(object: SceneObject & { kind: 'text' }): Bounds | null
   /** The run's device opened (scene has been reset). */
@@ -60,7 +64,7 @@ export interface GraphicsServiceOptions {
   readonly scheduler?: GraphicsScheduler
 }
 
-const REQUEST_OPS = new Set(['init', 'metrics', 'bounds', 'pause', 'wait_event', 'poll_event'])
+const REQUEST_OPS = new Set(['init', 'metrics', 'bounds', 'pause', 'wait_event', 'poll_event', 'pointer', 'drain_events', 'overlapping', 'object', 'control_value', 'flush'])
 
 interface Parked {
   kind: 'event' | 'pause'
@@ -81,6 +85,9 @@ export class GraphicsService implements HostService {
   private connection: ServiceConnection | null = null
   private parked: Parked | null = null
   private touched = false
+  private pointer = { x: 0, y: 0 }
+  private readonly controls = new Map<string, ControlDescriptor>()
+  private batching = false
 
   constructor(options: GraphicsServiceOptions) {
     this.host = options.host
@@ -90,7 +97,7 @@ export class GraphicsService implements HostService {
 
   /** Latest immutable scene snapshot for the renderer. */
   snapshot(): SceneSnapshot {
-    return this.scene.snapshot()
+    return { ...this.scene.snapshot(), ...(this.controls.size ? { controls: [...this.controls.values()] } : {}) }
   }
 
   get connected(): boolean {
@@ -110,6 +117,9 @@ export class GraphicsService implements HostService {
     this.clearParked()
     this.queue.length = 0
     this.touched = false
+    this.pointer = { x: 0, y: 0 }
+    this.controls.clear()
+    this.batching = false
     this.scene.setCanvas(DEFAULT_CANVAS)
     this.host.requestRender()
   }
@@ -128,6 +138,13 @@ export class GraphicsService implements HostService {
   /** Called by the renderer when the user interacts with a focused canvas. */
   submitInput(event: GraphicsInput): void {
     if (!this.connected) return
+    if ('x' in event) this.pointer = { x: event.x, y: event.y }
+    if ('controlId' in event) {
+      const control = this.controls.get(event.controlId)
+      if (!control) return
+      try { this.controls.set(control.id, parseControl({ ...control, value: event.value })) } catch { return }
+      this.host.requestRender()
+    }
     // A parked event waiter takes the event directly (bypasses the queue).
     if (this.parked?.kind === 'event') {
       const parked = this.parked
@@ -187,6 +204,42 @@ export class GraphicsService implements HostService {
           if (message.version !== GRAPHICS_VERSION) throw new ProtocolError(ERROR_CODES.UNSUPPORTED, 'Unsupported graphics service version')
           this.respond(id, true, { service: GRAPHICS_CAPABILITY, version: GRAPHICS_VERSION, limits: publicLimits() })
           return
+        case 'flush':
+          this.batching = false
+          this.host.requestRender()
+          this.respond(id, true, {})
+          return
+        case 'pointer':
+          this.respond(id, true, this.pointer)
+          return
+        case 'drain_events': {
+          const kinds = message.kinds
+          if (!Array.isArray(kinds) || kinds.some(v => typeof v !== 'string') || kinds.length > 12) throw new ProtocolError('bad_request', 'invalid event kinds')
+          const events = this.queue.filter(event => kinds.includes(event.kind))
+          for (let i = this.queue.length - 1; i >= 0; i--) if (kinds.includes(this.queue[i]!.kind)) this.queue.splice(i, 1)
+          this.respond(id, true, { events })
+          return
+        }
+        case 'object':
+          this.respond(id, true, this.require(message.target))
+          return
+        case 'control_value': {
+          const control = this.controls.get(validateTargetId(message.target))
+          if (!control) throw new ProtocolError('unknown_object', 'unknown control')
+          this.respond(id, true, { value: control.value })
+          return
+        }
+        case 'overlapping': {
+          const x1 = finiteNumber(message.x1, 'x1'), y1 = finiteNumber(message.y1, 'y1')
+          const x2 = finiteNumber(message.x2, 'x2'), y2 = finiteNumber(message.y2, 'y2')
+          const ids = this.scene.snapshot().objects.filter(object => {
+            if (!object.visible) return false
+            const box = this.measure(object)
+            return box.x <= Math.max(x1, x2) && box.x + box.w >= Math.min(x1, x2) && box.y <= Math.max(y1, y2) && box.y + box.h >= Math.min(y1, y2)
+          }).map(object => object.id)
+          this.respond(id, true, { ids })
+          return
+        }
         case 'metrics': {
           const c = this.scene.canvas
           this.respond(id, true, { w: c.w, h: c.h })
@@ -253,12 +306,29 @@ export class GraphicsService implements HostService {
     // mirrors this validation and raises in Python before sending).
     try {
       switch (message.op) {
+        case 'frame_begin': this.batching = true; return
+        case 'frame_end': this.batching = false; this.host.requestRender(); return
+        case 'control_add': {
+          const control = parseControl(message.control)
+          if (this.controls.size >= MAX_CONTROLS || this.controls.has(control.id)) throw new ProtocolError('limit_exceeded', 'control limit or duplicate id')
+          this.controls.set(control.id, control)
+          break
+        }
+        case 'control_set': {
+          const control = this.controls.get(validateTargetId(message.id))
+          if (!control) throw new ProtocolError('unknown_object', 'unknown control')
+          this.controls.set(control.id, parseControl({ ...control, value: message.value }))
+          break
+        }
+        case 'control_delete': this.controls.delete(validateTargetId(message.id)); break
+
         case 'canvas':
           this.scene.setCanvas(this.buildCanvas(message))
           break
         case 'add': {
           if (this.scene.size >= LIMITS.MAX_OBJECTS) throw new ProtocolError(ERROR_CODES.TOO_MANY_OBJECTS, 'MAX_OBJECTS reached')
           const object = buildObject(message)
+          if (object.kind === 'image') this.host.validateImage?.(object.resourceId, object.resourceVersion)
           if (this.scene.has(object.id)) throw new ProtocolError(ERROR_CODES.DUPLICATE_OBJECT, `duplicate id: ${object.id}`)
           this.scene.add(object)
           break
@@ -274,9 +344,12 @@ export class GraphicsService implements HostService {
           this.scene.replace(translateObject(object, finiteNumber(message.x, 'x') - rx, finiteNumber(message.y, 'y') - ry))
           break
         }
-        case 'update':
-          this.scene.replace(applyUpdate(this.require(message.id), message.props))
+        case 'update': {
+          const object = applyUpdate(this.require(message.id), message.props)
+          if (object.kind === 'image') this.host.validateImage?.(object.resourceId, object.resourceVersion)
+          this.scene.replace(object)
           break
+        }
         case 'delete':
           this.scene.remove(this.require(message.id).id)
           break
@@ -295,11 +368,12 @@ export class GraphicsService implements HostService {
           console.warn('[python-graphics] unknown command op:', String(message.op))
           return
       }
+      this.host.onSceneMutation?.()
       if (!this.touched) {
         this.touched = true
         this.host.onFirstCommand?.()
       }
-      this.host.requestRender()
+      if (!this.batching) this.host.requestRender()
     } catch (error) {
       console.warn('[python-graphics] dropping invalid command:', (error as Error).message)
     }

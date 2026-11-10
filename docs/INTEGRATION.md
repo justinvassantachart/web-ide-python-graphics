@@ -5,7 +5,7 @@ renderer, and the handoff a host agrees to when composing an additional service
 on the shared byte device. Design rationale lives in `DESIGN.md`.
 
 - Transport version: **1** (`FRAME_MAGIC = 0xC7`, `TRANSPORT_VERSION = 1`).
-- Graphics service: capability `graphics`, **version 1**.
+- Graphics service: capability `graphics`, **version 2** (0.3 image/control command set).
 - Any incompatible change bumps the relevant version; a mismatched peer gets a
   clean error at handshake, never undefined behavior.
 
@@ -60,7 +60,7 @@ reader accumulates until `8 + LENGTH` bytes are present.
 | 2..65535 | host-injected services |
 
 Control (channel 0), JSON: guest→host `{"t":"hello","mux":1}`; host→guest
-`{"t":"welcome","mux":1,"services":[{"channel":1,"capability":"graphics","version":1}, …]}`;
+`{"t":"welcome","mux":1,"services":[{"channel":1,"capability":"graphics","version":2}, …]}`;
 host→guest `{"t":"error","code":"…","message":"…"}`.
 
 The host validates `hello.mux === 1` before dispatching any service frame and
@@ -84,7 +84,7 @@ does not. `createJsonService` exposes only explicit `ServiceError(code,message)`
 messages; unexpected exceptions return a generic `internal` error. The outgoing
 write queue is capped at 64 frames and all writes are awaited serially.
 
-## 2. Graphics service (channel 1, JSON, v1)
+## 2. Graphics service (channel 1, JSON, v2)
 
 Requests carry a monotonic uint32 `id` and expect exactly one response:
 `{"id":N,"ok":true,"result":{…}}` or `{"id":N,"ok":false,"error":{"code","message"}}`.
@@ -130,12 +130,12 @@ check them before accepting cross-thread data.
 Text length is measured in UTF-16 code units (the Python client counts the same
 so astral characters cannot slip past it).
 
-**Images: no API in v1.** There is deliberately no image op — the protocol and
-the Python `Canvas` cannot express one — so there is no URL fetch and no image
-decode, which is why uncontrolled URLs and unbounded decoding are not a concern.
-The `unsupported` error code is **reserved** for the planned follow-up: a
-bounded, host-approved asset registry addressed by an opaque id (never a
-guest-controlled URL), with a hard pixel-dimension cap.
+Image sprites reference immutable `resourceId`/`resourceVersion` pairs from the
+separate `images` service. The `image` shape adds `x,y,w,h,sampling`; neither a
+scene nor its renderer fetches guest URLs. Controls add `control_add`,
+`control_set`, `control_delete`, and `control_value`. Convenience requests include
+`object`, `overlapping`, `pointer`, `drain_events`, and `flush`; `frame_begin` and
+`frame_end` coalesce publication. The image/control details follow below.
 
 ### Object identity, batching, and the final image
 
@@ -144,15 +144,11 @@ guest-controlled URL), with a hard pixel-dimension cap.
   reuses an id within a run, including after `delete`. The host rejects a
   duplicate `add` (`duplicate_object`) and a mutation of an unknown id, and ids
   do not survive a run: a new run resets the scene, so the id space restarts.
-- **Batch atomicity.** v1 has **no multi-command transaction**. Commands apply
-  individually in arrival order; there is no all-or-nothing batch and no partial
-  rollback. What is guaranteed is ordering: when the guest yields (any request —
-  `pause`/`wait_event`/`poll_event`/`bounds`/`metrics` — or program exit), every
-  command it sent beforehand has been applied to the scene. The renderer coalesces
-  repaints (one per microtask), so between yields intermediate states may or may
-  not paint; use `pause` to pace animation deterministically. A future explicit
-  `begin`/`commit` batch op is possible behind the version handshake but is not in
-  v1.
+- **Batch publication.** Commands apply individually in arrival order; frame
+  batching is not an all-or-nothing transaction. `frame_begin` suppresses visual
+  publication until `frame_end` or `flush`, while every mutation immediately pins
+  its image revisions. Publishing a replacement scene precedes unpinning removed
+  resources. Use cancellable `pause` for animation pacing.
 - **Final image.** When a run ends (program exit or Stop → device `signal`
   abort), the last applied scene remains displayed (frozen). The next run resets
   it when that run's device opens: the controller clears the scene on connect,
@@ -170,14 +166,14 @@ Python client appends `op`/`id` last, for example); both sides key by name. The
 control hello      ch0  {"t":"hello","mux":1}
   c7010000000000157b2274223a2268656c6c6f222c226d7578223a317d
 
-control welcome    ch0  {"t":"welcome","mux":1,"services":[{"channel":1,"capability":"graphics","version":1}]}
+control welcome    ch0  {"t":"welcome","mux":1,"services":[{"channel":1,"capability":"graphics","version":2}]}
   c7010000000000567b2274223a2277656c636f6d65222c226d7578223a312c227365727669636573...
 
-graphics init req  ch1  {"op":"init","id":1,"client":"python-graphics","version":1}
-  c70100010000003b7b226f70223a22696e6974222c226964223a312c22636c69656e74223a22707974686f6e2d6772617068696373222c2276657273696f6e223a317d
+graphics init req  ch1  {"op":"init","id":1,"client":"python-graphics","version":2}
+  c70100010000003b7b226f70223a22696e6974222c226964223a312c22636c69656e74223a22707974686f6e2d6772617068696373222c2276657273696f6e223a327d
 
-graphics init resp ch1  {"id":1,"ok":true,"result":{"service":"graphics","version":1,"limits":{"maxObjects":10000,"maxPoints":10000,"maxTextLen":4096,"maxCanvasDim":4096,"maxPauseMs":60000}}}
-  c7010001000000a77b226964223a312c226f6b223a747275652c22726573756c74223a7b2273657276696365223a226772617068696373222c2276657273696f6e223a312c226c696d697473223a7b226d61784f626a65637473223a31303030302c226d6178506f696e7473223a31303030302c226d6178546578744c656e223a343039362c226d617843616e76617344696d223a343039362c226d617850617573654d73223a36303030307d7d7d
+graphics init resp ch1  {"id":1,"ok":true,"result":{"service":"graphics","version":2,"limits":{"maxObjects":10000,"maxPoints":10000,"maxTextLen":4096,"maxCanvasDim":4096,"maxPauseMs":60000}}}
+  c7010001000000a77b226964223a312c226f6b223a747275652c22726573756c74223a7b2273657276696365223a226772617068696373222c2276657273696f6e223a322c226c696d697473223a7b226d61784f626a65637473223a31303030302c226d6178506f696e7473223a31303030302c226d6178546578744c656e223a343039362c226d617843616e76617344696d223a343039362c226d617850617573654d73223a36303030307d7d7d
 
 add rect cmd       ch1  {"op":"add","id":"g1","shape":"rect","x":10,"y":10,"w":80,"h":40,"fill":"skyblue","outline":"navy","width":2}
   c70100010000006d7b226f70223a22616464222c226964223a226731222c227368617065223a2272656374...
@@ -289,3 +285,131 @@ supported; applications that need progress must design bounded polling.
 - Panel id `web-ide.python-graphics`, title **Graphics** (do not reuse the
   built-in `canvasPlugin` id `canvas`). Keyboard is captured only while the
   canvas is focused.
+
+## Image and teaching graphics integration
+
+The images-capable companion requires `web-ide >=0.11.0-images.0`; its `/core`
+entry imports only the headless `web-ide/assets` entry. `/transport` remains
+independent. Register `controller.hostServices` on the existing multiplexer:
+channel 1 is `graphics` version 2 and channel 3 is `images` version 1. Keep other services
+on their own negotiated channels; do not open a second host device.
+
+`GraphicsController.images` owns the shared image service. Its `snapshot`
+observable carries presentation/output metadata, `readResource` supplies owned
+RGBA pixels and renderer reservation accounting, and `service` supplies lazy
+PNG downloads and generated-file bytes. Use `SvgCanvas`'s `readImageResource`
+prop and `ImageGallery`. An optional `onSaveToProject` callback belongs to the
+host: stage bytes and apply the full document under its ordinary revision and
+permissions. `show()` and Download never persist a workspace edit.
+
+Worker hosts must forward image events in order, before any scene referencing
+them. The shared `createImageResourceReplica` validates and bounds those bytes;
+fence every message by run generation. Preserve the final controller after
+normal guest exit for Download, and dispose it on rerun/reset/unmount. Keep
+request cancellation separate from image transfer lifetime: the transport
+aborts each individual request signal after a successful reply too.
+
+The execution resource map adds `graphics.image`, `simpleimage.py`, and
+`drawcanvas.py`. `getPythonGraphicsAvailability` and
+`getAvailablePythonGraphicsSources` select modules by dependency without
+rewriting a student's colliding file. A `simpleimage.py` collision disables that
+alias; the canonical graphics image API and other services remain available.
+Transport collisions disable dependent modules. `detectDesktopImageHelper`
+identifies PIL/Tk imports for an explicit adapted-copy workflow; never silently
+replace a teacher or student helper.
+
+### Student API
+
+```python
+from simpleimage import SimpleImage
+from graphics import Canvas, Image
+
+image = SimpleImage('images/photo.png')
+for pixel in image:
+    pixel.red = 255 - pixel.red
+image.show('Result')
+image.save('result.png')  # a real guest file, downloadable; host promotion is explicit
+canvas = Canvas(600, 400)
+sprite = canvas.create_image(20, 30, image, width=300, height=200)
+sprite.move(10, 0)
+```
+
+`Image` preserves RGBA; `SimpleImage` uses opaque RGB. Mutable pixels remain in
+one compact guest bytearray, so channel/tuple loops do not issue host requests.
+Coordinates are strict integers; invalid bounds raise `IndexError`. Channels
+accept finite numbers, truncate then clamp; booleans and strings are rejected.
+Pixel objects are coordinate views, rechecking bounds after resize. Independent
+iterators support nested loops. `set_pixel` copies values. `copy`, `crop`, and
+`resized` return independently owned images; `make_as_big_as` resizes its receiver
+with deterministic nearest-neighbor sampling. Width/height are read-only.
+
+Load PNG/JPEG/WebP from relative project paths. Save PNG or JPEG to an ordinary
+relative guest path; create parent directories using `os.makedirs` as usual.
+Decoded browser photo orientation is honored. Teaching exactness fixtures use
+opaque, unprofiled PNG; browser color-management and JPEG are not byte-exact
+Pillow emulations. `show` snapshots pixels and updates one presentation per
+image identity. Edits remain local until the next show or `canvas.set_image`.
+`close` releases the image's host handle; the displayed snapshot retains its
+own bounded lease. Guest allocations are capped at 48 MiB, dimensions at 4096
+and four million pixels, encoded inputs at 8 MiB, and transfer chunks at 32 KiB.
+
+One interactive `Canvas`/`DrawCanvas` is supported per program, plus multiple
+image presentation slots. Existing positional Canvas signatures are preserved.
+Images support ordinary retained movement, bounds, overlap, visibility and
+stacking. Canvas adds current pointer coordinates, draining click/key queues,
+text/color/font setters, and native labeled text fields, buttons, checkboxes,
+integer sliders and choice groups. Control callbacks run only in Python while
+`mainloop` dispatches events; no Python/JavaScript callback bridge is exposed.
+
+`DrawCanvas` translates width/height geometry into the same retained scene.
+`update()` flushes one frame; `mainloop()` waits through cancellable event reads.
+Use `Canvas.pause(milliseconds)` for animation, not unsupported runtime sleep.
+The original starter shells in `examples/starters` provide Baby Graphics,
+Sand/Waterfall controls and a pure-Python Grid. Their `step` placeholder is where
+course algorithm functions and doctests belong. These are explicit browser
+adaptations, not a general Tkinter implementation or completed assignments.
+
+### Verification
+
+`npm run validate` checks TypeScript/CPython contracts, packed build, neutral
+transport, headless workers and real CPython↔mux image transfer/save/reload with
+an injected deterministic codec. Browser codec correctness is a separate gate.
+`check:consumer` accepts `WEB_IDE_TARBALL` and optional `DEBUGGER_SH_TARBALL` for
+an isolated packed production fixture. `?program=image_contract` tests pixels,
+show/save/reload and retained sprites; `image_inputs` provides actual binary
+PNG/JPEG project inputs and chromakey; `ghost_benchmark` measures nine 1000×750
+inputs; `sand_benchmark` measures native controls and compact raster frames.
+
+For compact Grid simulations, `image.set_rgb_data(bytes)` replaces the entire
+image from exactly `width * height * 3` packed RGB bytes in row order. It copies
+channels into the image's owned RGBA buffer and makes alpha opaque; it performs
+no host request. Sand and Waterfall pack their existing Grid into one bytearray,
+refresh one retained image, and subtract elapsed work from the frame pause.
+The ordinary teaching Pixel and tuple APIs remain available for image algorithms.
+
+
+### 0.3 lifecycle and compatibility rules
+
+The graphics capability is version 2. A 0.3 Python helper rejects a version 1
+host with a capability error; framing/multiplexer version 1 and the independent
+images version 1 capability are unchanged. Historical release notes above describe
+0.2 hosts only.
+
+Every scene mutation pins referenced image revisions immediately, including inside
+DrawCanvas frame batches. Publication of a replacement scene precedes releasing
+removed revisions. Uploading a changed guest image releases its prior owner after
+the new immutable revision commits; scene and presentation pins keep visible old
+frames alive. Python garbage collection queues owner releases without performing
+I/O; the next image request drains the queue. `close()` releases explicitly.
+
+Image reads use normal guest filesystem paths (`images/a.png`, `./images/a.png`,
+`/images/a.png`, and parent components). The runtime mounts workspace files at the
+guest root. Saves write the real guest path, then commit a retryable download
+receipt; failures release the encoded transfer, and a publication error explicitly
+reports that the guest file was already saved. Output registry paths map the
+absolute guest path under `/workspace`.
+
+Companion collision detection follows case-sensitive top-level Python module
+lookup. `lib/simpleimage.py` and `SimpleImage.py` do not shadow `simpleimage`.
+Desktop PIL/Tk helpers remain student-owned; the host may offer an explicit
+preserving rename. No helper is silently replaced.

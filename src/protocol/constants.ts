@@ -16,7 +16,7 @@ export const CHANNEL_GRAPHICS = 1
 export const GRAPHICS_CAPABILITY = 'graphics'
 
 /** Graphics service protocol version. */
-export const GRAPHICS_VERSION = 1
+export const GRAPHICS_VERSION = 2
 
 /**
  * Hard bounds enforced identically on both sides of the trust boundary. A guest

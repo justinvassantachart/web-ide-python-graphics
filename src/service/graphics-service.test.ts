@@ -49,8 +49,8 @@ describe('GraphicsService', () => {
   beforeEach(() => { h = harness() })
 
   it('answers the init handshake with the service version and limits', () => {
-    h.send({ op: 'init', id: 1, client: 'python-graphics', version: 1 })
-    expect(h.sent[0]).toMatchObject({ id: 1, ok: true, result: { service: 'graphics', version: 1 } })
+    h.send({ op: 'init', id: 1, client: 'python-graphics', version: 2 })
+    expect(h.sent[0]).toMatchObject({ id: 1, ok: true, result: { service: 'graphics', version: 2 } })
     expect((h.sent[0] as { result: { limits: object } }).result.limits).toBeTruthy()
   })
 
@@ -156,7 +156,7 @@ describe('GraphicsService', () => {
     expect(h.service.connected).toBe(false)
   })
   it('rejects unsupported graphics initialization versions', () => {
-    h.send({ op: 'init', id: 1, version: 2 })
+    h.send({ op: 'init', id: 1, version: 1 })
     expect(h.sent[0]).toMatchObject({ id: 1, ok: false, error: { code: 'unsupported' } })
   })
 
@@ -183,4 +183,59 @@ describe('GraphicsService', () => {
     expect(newReplies).toHaveLength(0)
   })
 
+})
+
+describe('image teaching graphics', () => {
+  it('retains and moves image bounds without raster data in scene commands', () => {
+    const h = harness()
+    h.send({ op: 'add', id: 'image', shape: 'image', resourceId: 'r1', resourceVersion: 1, x: 2, y: 3, w: 20, h: 10, sampling: 'nearest' })
+    h.send({ op: 'move', id: 'image', dx: 10, dy: 5 })
+    h.send({ op: 'bounds', id: 1, target: 'image' })
+    expect(h.sent.at(-1)).toMatchObject({ result: { x: 12, y: 8, w: 20, h: 10 } })
+    h.send({ op: 'overlapping', id: 2, x1: 12, y1: 8, x2: 13, y2: 9 })
+    expect(h.sent.at(-1)).toMatchObject({ result: { ids: ['image'] } })
+    h.send({ op: 'visible', id: 'image', on: false })
+    h.send({ op: 'overlapping', id: 3, x1: 12, y1: 8, x2: 13, y2: 9 })
+    expect(h.sent.at(-1)).toMatchObject({ result: { ids: [] } })
+  })
+
+  it('reads current pointer without consuming input and drains each queue once', () => {
+    const h = harness()
+    h.service.submitInput({ kind: 'mousemove', x: 14, y: 28, button: 0 })
+    h.service.submitInput({ kind: 'mouseclick', x: 15, y: 29, button: 0 })
+    h.service.submitInput({ kind: 'keydown', key: 'a' })
+    h.send({ op: 'pointer', id: 1 })
+    expect(h.sent.at(-1)).toMatchObject({ result: { x: 15, y: 29 } })
+    h.send({ op: 'drain_events', id: 2, kinds: ['mouseclick'] })
+    expect(h.sent.at(-1)).toMatchObject({ result: { events: [{ kind: 'mouseclick' }] } })
+    h.send({ op: 'drain_events', id: 3, kinds: ['mouseclick'] })
+    expect(h.sent.at(-1)).toMatchObject({ result: { events: [] } })
+    h.send({ op: 'drain_events', id: 4, kinds: ['keydown'] })
+    expect(h.sent.at(-1)).toMatchObject({ result: { events: [{ key: 'a' }] } })
+  })
+
+  it('validates control values, records events and clears controls on rerun', () => {
+    const h = harness()
+    h.send({ op: 'control_add', control: { id: 'c1', kind: 'slider', label: 'Brownian', value: 20, min: 0, max: 100 } })
+    h.service.submitInput({ kind: 'controlchange', controlId: 'c1', value: 101 })
+    h.send({ op: 'control_value', id: 1, target: 'c1' })
+    expect(h.sent.at(-1)).toMatchObject({ result: { value: 20 } })
+    h.service.submitInput({ kind: 'controlchange', controlId: 'c1', value: 40 })
+    h.send({ op: 'control_value', id: 2, target: 'c1' })
+    expect(h.sent.at(-1)).toMatchObject({ result: { value: 40 } })
+    h.service.reset()
+    expect(h.service.snapshot().controls).toBeUndefined()
+  })
+
+  it('batches DrawCanvas changes until a frame flush', () => {
+    const h = harness()
+    const before = h.renders()
+    h.send({ op: 'frame_begin' })
+    h.send({ op: 'add', id: 'r1', shape: 'rect', x: 0, y: 0, w: 1, h: 1 })
+    h.send({ op: 'add', id: 'r2', shape: 'rect', x: 1, y: 1, w: 1, h: 1 })
+    expect(h.renders()).toBe(before)
+    h.send({ op: 'flush', id: 1 })
+    expect(h.renders()).toBe(before + 1)
+    expect(h.sent.at(-1)).toMatchObject({ ok: true })
+  })
 })

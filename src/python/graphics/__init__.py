@@ -1,7 +1,7 @@
 """Introductory 2D graphics for Web IDE Python programs.
 
 This module talks to the host IDE over the Web IDE host byte device
-(``/dev/debugger-sh-host``) using the python-graphics wire protocol v1. It is a
+(``/dev/debugger-sh-host``) using framing v1 and the graphics service v2. It is a
 small, documented, retained-object API: create shapes and text, get back stable
 handles, move/update/delete them, read mouse and keyboard input, and pace
 animation with ``pause``.
@@ -168,7 +168,7 @@ class _Connection:
     """Graphics facade; the neutral singleton owns the shared byte device."""
     def __init__(self):
         try:
-            self._service = get_connection().service("graphics", version=1)
+            self._service = get_connection().service("graphics", version=2)
         except TransportClosed as exc:
             raise GraphicsClosed(str(exc)) from exc
         except TransportError as exc:
@@ -205,6 +205,9 @@ class Event:
         self.button = data.get("button")
         self.key = data.get("key")
         self.text = data.get("text")
+        self.keysym = self.key
+        self.control_id = data.get("controlId")
+        self.value = data.get("value")
 
     def __repr__(self):
         return "Event(%r, x=%r, y=%r, key=%r)" % (self.type, self.x, self.y, self.key)
@@ -220,7 +223,7 @@ class GraphicsObject:
         self._deleted = False
 
     def _check(self):
-        if self._deleted:
+        if self._deleted or self.id not in self._canvas._live:
             raise GraphicsError("object %r has been deleted" % self.id)
 
     def move(self, dx, dy):
@@ -315,10 +318,14 @@ class Canvas:
         if _ACTIVE_CANVAS is not None:
             raise GraphicsError("only one Canvas is supported per program")
         self._conn = _Connection()
-        self._conn.request("init", client="python-graphics", version=1)
+        self._conn.request("init", client="python-graphics", version=2)
         self._next = 1
         self._live = set()
         self._resources = {}
+        self._handles = {}
+        self._images = {}
+        self._controls = {}
+        self._callbacks = {}
         self._text_ids = set()
         self._point_count = 0
         self._text_length = 0
@@ -335,7 +342,9 @@ class Canvas:
 
     # ---- drawing ----------------------------------------------------------
 
-    def create_line(self, x1, y1, x2, y2, color="black", width=1):
+    def create_line(self, x1, y1, x2, y2, color="black", width=1, *, fill=None):
+        if fill is not None:
+            color = fill
         return self._add(
             "line", x1=_num(x1, "x1"), y1=_num(y1, "y1"), x2=_num(x2, "x2"), y2=_num(y2, "y2"),
             outline=_color(color, "color"), width=_nonneg(width, "width"),
@@ -371,7 +380,9 @@ class Canvas:
             fill=_color(fill, "fill"), outline=_color(outline, "outline"), width=_nonneg(width, "width"),
         )
 
-    def create_text(self, x, y, text, color="black", font_size=16, anchor="nw", font_family="sans-serif"):
+    def create_text(self, x, y, text, color="black", font_size=16, anchor="nw", font_family="sans-serif", *, fill=None):
+        if fill is not None:
+            color = fill
         if not isinstance(text, str):
             raise GraphicsError("text must be a string")
         if _text_len(text) > _MAX_TEXT_LEN:
@@ -385,6 +396,33 @@ class Canvas:
             fill=_color(color, "color"), font_size=_positive(font_size, "font_size"),
             anchor=anchor, font_family=font_family,
         )
+
+    def create_image(self, x, y, filename, *, width=None, height=None, sampling="smooth"):
+        from .image import Image
+        image = filename if isinstance(filename, Image) else Image(filename)
+        if sampling not in ("smooth", "nearest"):
+            raise GraphicsError("sampling must be smooth or nearest")
+        resource = image._upload()
+        obj = self._add("image", x=_num(x, "x"), y=_num(y, "y"),
+                        w=_positive(image.width if width is None else width, "width"),
+                        h=_positive(image.height if height is None else height, "height"),
+                        resourceId=resource["resourceId"], resourceVersion=resource["version"], sampling=sampling)
+        self._images[obj.id] = image
+        return obj
+
+    def create_image_with_size(self, x, y, width, height, filename):
+        return self.create_image(x, y, filename, width=width, height=height)
+
+    def set_image(self, obj, image):
+        from .image import Image
+        obj = _as_object(self, obj)
+        if obj.shape != "image" or not isinstance(image, Image):
+            raise GraphicsError("set_image expects an image object and Image")
+        resource = image._upload()
+        obj._update(resourceId=resource["resourceId"], resourceVersion=resource["version"])
+        self._images[obj.id] = image
+        image._release_previous()
+        return obj
 
     def _add(self, shape, **fields):
         self._ensure_open()
@@ -402,13 +440,17 @@ class Canvas:
             self._text_ids.add(object_id)
         self._point_count += point_count
         self._text_length += text_length
-        return GraphicsObject(self, object_id, shape)
+        handle = GraphicsObject(self, object_id, shape)
+        self._handles[object_id] = handle
+        return handle
 
     # ---- scene control ----------------------------------------------------
 
     def clear(self):
         self._ensure_open()
         self._live.clear()
+        self._handles.clear()
+        self._images.clear()
         self._resources.clear()
         self._text_ids.clear()
         self._point_count = 0
@@ -423,6 +465,8 @@ class Canvas:
 
     def _delete(self, object_id):
         self._live.discard(object_id)
+        self._handles.pop(object_id, None)
+        self._images.pop(object_id, None)
         points, text = self._resources.pop(object_id, (0, 0))
         self._text_ids.discard(object_id)
         self._point_count -= points
@@ -507,6 +551,150 @@ class Canvas:
         except GraphicsClosed:
             self._closed = True
 
+    def get_width(self, obj=None):
+        return self.width if obj is None else _as_object(self, obj).get_bounds()["w"]
+
+    def get_height(self, obj=None):
+        return self.height if obj is None else _as_object(self, obj).get_bounds()["h"]
+
+    def get_left_x(self, obj):
+        return _as_object(self, obj).get_bounds()["x"]
+
+    def get_top_y(self, obj):
+        return _as_object(self, obj).get_bounds()["y"]
+
+    def moveto(self, obj, x, y):
+        return _as_object(self, obj).move_to(x, y)
+
+    def set_color(self, obj, color):
+        return _as_object(self, obj).set_color(color)
+
+    def set_fill_color(self, obj, color):
+        return _as_object(self, obj).set_fill(color)
+
+    def set_outline_color(self, obj, color):
+        return _as_object(self, obj).set_outline(color)
+
+    def set_hidden(self, obj, hidden):
+        return _as_object(self, obj).set_visible(not hidden)
+
+    def set_text(self, obj, text):
+        return _as_object(self, obj).set_text(text)
+
+    def get_text(self, obj):
+        obj = _as_object(self, obj)
+        obj._check()
+        return self._conn.request("object", target=obj.id).get("text", "")
+
+    def set_font(self, obj, font, size=None):
+        obj = _as_object(self, obj)
+        if font not in _FONT_FAMILIES:
+            raise GraphicsError("font must be a supported generic font family")
+        obj._update(font_family=font)
+        if size is not None:
+            obj.set_font_size(size)
+        return obj
+
+    def tag_raise(self, obj):
+        return _as_object(self, obj).to_front()
+
+    def tag_lower(self, obj):
+        return _as_object(self, obj).to_back()
+
+    def find_overlapping(self, x1, y1, x2, y2):
+        result = self._conn.request("overlapping", x1=_num(x1, "x1"), y1=_num(y1, "y1"), x2=_num(x2, "x2"), y2=_num(y2, "y2"))
+        return [self._handles[key] for key in result["ids"] if key in self._handles]
+
+    def get_mouse_x(self):
+        return self._conn.request("pointer")["x"]
+
+    def get_mouse_y(self):
+        return self._conn.request("pointer")["y"]
+
+    def _drain(self, kinds):
+        return [Event(event) for event in self._conn.request("drain_events", kinds=kinds)["events"]]
+
+    def get_new_mouse_clicks(self):
+        return self._drain(["mouseclick"])
+
+    def get_new_key_presses(self):
+        return self._drain(["keydown"])
+
+    def get_new_button_clicks(self):
+        return [event.control_id for event in self._drain(["controlclick"])]
+
+    def _control(self, kind, label, value, callback=None, **fields):
+        self._ensure_open()
+        if not isinstance(label, str) or _text_len(label) > 256 or len(self._controls) >= 64:
+            raise GraphicsError("control label or count exceeds limit")
+        control_id = "c%d" % self._next
+        self._next += 1
+        self._conn.command("control_add", control=dict(id=control_id, kind=kind, label=label, value=value, **fields))
+        self._controls[control_id] = kind
+        if callback is not None:
+            if not callable(callback):
+                raise TypeError("callback must be callable")
+            self._callbacks[control_id] = callback
+        return control_id
+
+    def create_text_field(self, label="Text", value="", callback=None):
+        if not isinstance(value, str) or _text_len(value) > 4096:
+            raise GraphicsError("text field value must be a string of at most 4096 characters")
+        return self._control("text", label, value, callback)
+
+    def create_button(self, label, callback=None):
+        return self._control("button", label, "", callback)
+
+    def create_checkbox(self, label, checked=False, callback=None):
+        return self._control("checkbox", label, bool(checked), callback)
+
+    def create_slider(self, label, minimum=0, maximum=100, value=20, callback=None):
+        if any(type(n) is not int for n in (minimum, maximum, value)) or not -1000000 <= minimum <= value <= maximum <= 1000000:
+            raise GraphicsError("slider requires bounded integer min/value/max")
+        return self._control("slider", label, value, callback, min=minimum, max=maximum)
+
+    def create_choice(self, label, options, value=None, callback=None):
+        options = list(options)
+        if not options or len(options) > 32 or any(not isinstance(option, str) or not option or len(option) > 128 for option in options) or len(set(options)) != len(options):
+            raise GraphicsError("choice requires 1..32 distinct labels")
+        value = options[0] if value is None else value
+        if value not in options:
+            raise GraphicsError("choice value must be one of its options")
+        return self._control("choice", label, value, callback, options=options)
+
+    def get_control_value(self, control):
+        if control not in self._controls:
+            raise GraphicsError("unknown control")
+        return self._conn.request("control_value", target=control)["value"]
+
+    get_text_field_text = get_control_value
+
+    def set_control_value(self, control, value):
+        if control not in self._controls:
+            raise GraphicsError("unknown control")
+        self._conn.command("control_set", id=control, value=value)
+
+    def delete_control(self, control):
+        if control in self._controls:
+            self._conn.command("control_delete", id=control)
+            self._controls.pop(control)
+            self._callbacks.pop(control, None)
+
+    delete_text_field = delete_control
+
+    def dispatch_event(self, event):
+        if event is not None and event.control_id in self._callbacks and event.type in ("controlsubmit", "controlclick", "controlchange"):
+            self._callbacks[event.control_id](event)
+
+    def update(self):
+        self._ensure_open()
+        self._conn.request("flush")
+
+    def mainloop(self):
+        self.update()
+        while self.is_open():
+            self.dispatch_event(self.get_event())
+
     def is_open(self):
         return not self._closed
 
@@ -533,9 +721,18 @@ def _corners_to_box(x1, y1, x2, y2):
 
 def _as_object(canvas, obj):
     if isinstance(obj, GraphicsObject):
+        if obj._canvas is not canvas:
+            raise GraphicsError("object belongs to another canvas")
+        obj._check()
         return obj
     if isinstance(obj, str):
         if not 1 <= len(obj) <= 128:
             raise GraphicsError("object id must be 1..128 characters")
-        return GraphicsObject(canvas, obj)
+        if obj not in canvas._live:
+            raise GraphicsError("unknown object %r" % obj)
+        return canvas._handles[obj]
     raise GraphicsError("expected a graphics object or id")
+
+# Image import is inert: decoding opens the existing neutral connection lazily.
+from .image import Image, Pixel, SimpleImage, ImageError
+__all__ += ["Image", "Pixel", "SimpleImage", "ImageError"]

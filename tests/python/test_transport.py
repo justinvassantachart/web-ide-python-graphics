@@ -20,7 +20,7 @@ def frame(channel, value):
 class Device:
     def __init__(self, services=None):
         self.services = services if services is not None else [
-            {'channel': 7, 'capability': 'graphics', 'version': 1},
+            {'channel': 7, 'capability': 'graphics', 'version': 2},
             {'channel': 2, 'capability': 'echo', 'version': 1},
             {'channel': 3, 'capability': 'counter', 'version': 1},
         ]

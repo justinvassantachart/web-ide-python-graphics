@@ -1,3 +1,83 @@
+# 0.3.0-images.1 starter correction
+
+Supersedes images.0 for staging. The Sand starter now paints each press/drag event
+before processing a following release, so quick clicks cannot disappear between
+frames. The shared image implementation and wire protocol are unchanged. The
+consumer now includes the actual Sand/Waterfall/Baby Graphics starter sources;
+`IMAGE_BENCHMARK=brush` checks quick Sand and BigErase clicks against displayed
+pixels; Chromium, Firefox and WebKit all pass both clicks. Images.0 remains immutable; its library, engine and browser evidence
+below still applies to the unchanged runtime code.
+
+# 0.3 image and course graphics candidate verification (2026-11-10)
+
+The candidate composes Web IDE 0.11.0-images.0 and debugger-sh
+0.3.15-webide.0.9.0.2. `npm run validate` passes 100 TypeScript tests, 24 CPython
+tests, lint, typecheck, build, a real CPython/multiplexer image/save/reload check,
+and actual production worker isolation checks. The deliberate UI-entry negative
+control fails compilation, as required. A clean packed consumer passes both
+Bundler and strict NodeNext declarations and its production build.
+
+The real browser fixture uses binary PNG/JPEG files in the guest filesystem,
+real WASM CPython and browser codecs. Chromium 151.0.7922.34, Firefox 153.0 and
+WebKit 26.5 all passed Run and Debug→Continue, exact opaque PNG chromakey pixels,
+JPEG decode, PNG/JPEG guest saves, PNG reload, retained image sprites and PNG
+download after normal exit. All three also passed native text Return, button,
+checkbox/slider/radio defaults and changes, no control typing leaking into canvas
+keys, and captured pointer release outside the canvas.
+
+The independent implementation audit's regressions cover immediate pins inside
+frame batches, rollback of partial pin acquisition, superseded upload owners,
+queued GC release without destructor I/O, save commit retry and unconditional
+encoded-transfer release, normal guest paths, bounded repr, and temporary decode
+release when the guest pixel budget rejects. An actual Chromium run performed
+100 edits/saves at 800×600, reloaded the absolute guest path, discarded 300 uploaded
+images, and rendered two differently colored immutable revisions in one batch;
+all passed in 68.445 seconds. Stop during the full Ghost loop acknowledged in 28 ms
+and settled in 32 ms on the development host.
+
+THS's separate integration tests additionally verify generation-fenced immutable
+binary maps and hashes, resource-before-scene ordering, scene-before-release
+ordering, a 128 MiB partition (80 MiB worker/48 MiB page), queued structured-clone
+reservations held until explicit page receipt, and recoverable page/worker budget
+failures that preserve downloads. Only pinned displayed frames cross the worker;
+temporary decoded guest working images do not.
+
+## Performance evidence and limits
+
+Measured on Intel Core i7-8850H 2.60 GHz, 16 GiB macOS development hardware using
+Chromium. These are real rendered frames, counted after canvas paint on animation
+frames, not merely guest loop iterations. The full Ghost workload uses nine
+1000×750 images (6.75 million input pixels), local tuple APIs and nearest-to-average
+RGB. Integer squared-distance selection preserves the nearest-pixel result.
+
+| Workload | Measurement |
+| --- | --- |
+| Ghost optimized initial sample | 83.244 s total; 80.382 s algorithm; 2.318 s load |
+| Ghost separate five-run series | 105.688 s cold/busy; 82.360, 88.942, 81.640, 83.663 s warm |
+| Sand 50×50, 60 seconds | 48.87 presented FPS; 33.335 ms p95 presentation interval |
+| Sand 100×50, 60 seconds | 34.17 presented FPS; 49.995 ms p95 presentation interval |
+
+Initial unoptimized Ghost implementations took 165.245 s and 203.003 s total; initial
+per-pixel Sand paths missed the frame target. Compact `set_rgb_data` and the
+allocation-free tuple getter resolved these measured bottlenecks. The cold/busy
+Ghost sample still exceeds 90 seconds. Five warm samples per workload and school
+hardware qualification are **not yet complete**; these observations do not claim
+a general 90 second p95 guarantee or a production-wide performance qualification.
+Raw reports are retained with the implementation artifacts under
+`python-browser-matrix`, `python-audit-controls`, `python-audit-lifetimes`,
+`python-stop-evidence`, `python-ghost-warm-evidence`, and `python-sand-bulk-evidence`.
+
+Reproduce against a retained packed consumer with `scripts/browser-images.mjs`.
+Set `IMAGE_FIXTURE_URL`, `PLAYWRIGHT_MODULE` when Playwright lives outside this
+package, and `IMAGE_EVIDENCE_DIR`. `IMAGE_BROWSERS=chromium,firefox,webkit` runs the
+codec/debug matrix; `IMAGE_CYCLES=20` repeats run/reset. `IMAGE_BENCHMARK` accepts
+`controls`, `lifetimes`, `ghost`, `sand`, or `stop`; `IMAGE_RUNS` repeats benchmarks.
+The Sand harness measures each requested width for 60 seconds.
+
+Earlier release evidence follows and applies to those historical packages only.
+
+---
+
 # 0.2.1 worker entry verification (2026-11-05)
 
 The production public-player build demonstrated that importing headless names

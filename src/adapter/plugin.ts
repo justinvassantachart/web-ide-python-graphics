@@ -64,7 +64,7 @@ export function createPythonGraphicsPlugin(
       const controller = new GraphicsController(options.scheduler)
       const additional = options.createAdditionalServices?.() ?? []
       const multiplexer = new DeviceMultiplexer({
-        services: [controller.hostService, ...additional],
+        services: [...controller.hostServices, ...additional],
         onFatal: () => session.stop(),
       })
 

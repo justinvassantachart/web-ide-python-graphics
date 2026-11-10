@@ -15,12 +15,15 @@ import { useCallback, useSyncExternalStore } from 'react'
 import type { CSSProperties } from 'react'
 import type { IDEPanelServices } from 'web-ide'
 import { DEFAULT_CANVAS, type SceneSnapshot } from '../model/scene'
+import { ImageGallery } from '../renderer/ImageGallery'
+import type { ImageServiceSnapshot } from 'web-ide/assets'
 import { SvgCanvas, type MeasureFn } from '../renderer/SvgCanvas'
 import type { GraphicsInput } from '../service/events'
 import type { GraphicsController, GraphicsStatus } from './controller'
 import { controllerRegistry } from './registry'
 
 const EMPTY_SNAPSHOT: SceneSnapshot = { canvas: DEFAULT_CANVAS, objects: [], version: 0 }
+const EMPTY_IMAGES: ImageServiceSnapshot = { resources: [], presentations: [], outputs: [] }
 const NEVER_RUN: GraphicsStatus = { phase: 'never-run', drew: false }
 
 // Follow the host workbench theme (light/dark) through Web IDE's public CSS
@@ -73,6 +76,10 @@ export function GraphicsPanel({ runtime }: IDEPanelServices) {
     useCallback(() => controller?.status.value ?? NEVER_RUN, [controller]),
   )
 
+  const images = useSyncExternalStore(
+    useCallback(cb => controller ? controller.images.snapshot.subscribe(() => cb()) : () => {}, [controller]),
+    useCallback(() => controller?.images.snapshot.value ?? EMPTY_IMAGES, [controller]),
+  )
   // Stable callbacks so SvgCanvas does not rebind its measurer every frame.
   const onInput = useCallback((event: GraphicsInput) => controller?.submitInput(event), [controller])
   const bindMeasure = useCallback((measure: MeasureFn | null) => controller?.setMeasurer(measure), [controller])
@@ -90,7 +97,7 @@ export function GraphicsPanel({ runtime }: IDEPanelServices) {
     )
   }
 
-  if (!status.drew) {
+  if (!status.drew && !images.presentations.length && !images.outputs.length) {
     return (
       <div style={wrapperStyle}>
         <Hint>
@@ -111,8 +118,9 @@ export function GraphicsPanel({ runtime }: IDEPanelServices) {
   }
 
   return (
-    <div style={wrapperStyle}>
-      <SvgCanvas snapshot={snapshot} onInput={onInput} bindMeasure={bindMeasure} />
+    <div style={{ ...wrapperStyle, overflow: 'auto' }}>
+      {status.drew && <div style={{ minHeight: 240 }}><SvgCanvas snapshot={snapshot} onInput={onInput} bindMeasure={bindMeasure} readImageResource={controller.images.readResource} /></div>}
+      <ImageGallery snapshot={images} readResource={controller.images.readResource} downloadPresentation={id => controller.images.service.downloadPresentation(id)} getOutput={id => controller.images.service.getOutput(id)} />
     </div>
   )
 }
